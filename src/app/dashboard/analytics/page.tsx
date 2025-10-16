@@ -96,8 +96,10 @@ export default function AnalyticsPage() {
     if (!selectedWebsite) return;
 
     try {
+      console.log('DEBUG: Fetching stats for website:', selectedWebsite.id, 'period:', period);
       const response = await fetch(`/api/stats?websiteId=${selectedWebsite.id}&period=${period}`);
       const data = await response.json();
+      console.log('DEBUG: Received stats data:', data);
       setStats(data);
     } catch (error) {
       console.error('Error fetching stats:', error);

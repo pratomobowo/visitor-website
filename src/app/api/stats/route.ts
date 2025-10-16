@@ -10,7 +10,10 @@ export async function GET(request: NextRequest) {
     const websiteId = searchParams.get('websiteId');
     const period = searchParams.get('period') || 'today';
     
+    console.log('DEBUG: Stats API called with websiteId:', websiteId, 'period:', period);
+    
     if (!websiteId) {
+      console.log('DEBUG: No websiteId provided');
       return NextResponse.json(
         { error: 'Website ID is required' },
         { status: 400 }
@@ -20,6 +23,8 @@ export async function GET(request: NextRequest) {
     // Calculate date range
     const { startDate, endDate, groupBy } = getDateRange(period);
     
+    console.log('DEBUG: Date range:', { startDate: startDate.toISOString(), endDate: endDate.toISOString(), groupBy });
+    
     // Get basic stats using PostgreSQL
     const basicStats = await query(`
       SELECT * FROM visitors
@@ -28,11 +33,15 @@ export async function GET(request: NextRequest) {
       AND visit_time <= $3
     `, [websiteId, startDate.toISOString(), endDate.toISOString()]);
     
+    console.log('DEBUG: Basic stats query returned', basicStats?.length || 0, 'rows');
+    
     // Calculate metrics
     const totalPageViews = basicStats.length;
     const uniqueVisitors = new Set((basicStats as { session_id: string }[]).map((v) => v.session_id)).size;
     const totalSessions = new Set((basicStats as { session_id: string }[]).map((v) => v.session_id)).size;
     const averageDuration = (basicStats as { duration_seconds?: number }[]).reduce((sum: number, v) => sum + (v.duration_seconds || 0), 0) / totalPageViews || 0;
+    
+    console.log('DEBUG: Calculated metrics:', { totalPageViews, uniqueVisitors, totalSessions, averageDuration });
     
     // Get time series data using PostgreSQL
     const timeSeriesData = await query(`
@@ -117,7 +126,7 @@ export async function GET(request: NextRequest) {
       });
     }
     
-    return NextResponse.json({
+    const response = {
       summary: {
         totalPageViews,
         uniqueVisitors,
@@ -129,7 +138,13 @@ export async function GET(request: NextRequest) {
       topPages,
       deviceStats,
       referrerStats
-    });
+    };
+    
+    console.log('DEBUG: Returning response with summary:', response.summary);
+    console.log('DEBUG: Time series length:', response.timeSeries.length);
+    console.log('DEBUG: Top pages length:', response.topPages.length);
+    
+    return NextResponse.json(response);
     
   } catch (error) {
     console.error('Error in stats API:', error);
