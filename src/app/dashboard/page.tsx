@@ -96,18 +96,18 @@ export default function Dashboard() {
   const fetchStatsForWebsites = async (websites: Website[]) => {
     const statsPromises = websites.map(async (website) => {
       try {
-        console.log('DEBUG: Fetching stats for website:', website.id);
-        const response = await fetch(`/api/stats?websiteId=${website.id}&period=today`);
-        const data = await response.json();
-        console.log('DEBUG: Received data for website', website.id, ':', data);
+        const [statsResponse, realtimeResponse] = await Promise.all([
+          fetch(`/api/stats?websiteId=${website.id}&period=today`),
+          fetch(`/api/realtime?websiteId=${website.id}`)
+        ]);
         
-        const fakeRealtimeCount = Math.floor(Math.random() * 20); // Simulated realtime count
-        console.log('DEBUG: FAKE realtime visitors for', website.id, ':', fakeRealtimeCount);
+        const data = await statsResponse.json();
+        const realtimeData = await realtimeResponse.json();
         
         return {
           id: website.id,
           todayVisitors: data.summary?.uniqueVisitors || 0,
-          realtimeVisitors: fakeRealtimeCount,
+          realtimeVisitors: realtimeData.count || 0,
           todayPageViews: data.summary?.totalPageViews || 0,
           avgDuration: data.summary?.averageDuration || 0,
         };
@@ -129,7 +129,6 @@ export default function Dashboard() {
       return acc;
     }, {} as Record<string, WebsiteStats>);
     
-    console.log('DEBUG: Final website stats:', statsMap);
     setWebsiteStats(statsMap);
   };
 

@@ -56,7 +56,7 @@ export default function AnalyticsPage() {
   const [websites, setWebsites] = useState<Website[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [period, setPeriod] = useState('today');
-  const [realtimeVisitors] = useState(0);
+  const [realtimeVisitors, setRealtimeVisitors] = useState(0);
   const [showCustomDateFilter, setShowCustomDateFilter] = useState(false);
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
@@ -96,23 +96,41 @@ export default function AnalyticsPage() {
     if (!selectedWebsite) return;
 
     try {
-      console.log('DEBUG: Fetching stats for website:', selectedWebsite.id, 'period:', period);
       const response = await fetch(`/api/stats?websiteId=${selectedWebsite.id}&period=${period}`);
       const data = await response.json();
-      console.log('DEBUG: Received stats data:', data);
       setStats(data);
     } catch (error) {
       console.error('Error fetching stats:', error);
     }
   }, [selectedWebsite, period]);
 
+  const fetchRealtimeVisitors = useCallback(async () => {
+    if (!selectedWebsite) return;
+
+    try {
+      const response = await fetch(`/api/realtime?websiteId=${selectedWebsite.id}`);
+      const data = await response.json();
+      setRealtimeVisitors(data.count || 0);
+    } catch (error) {
+      console.error('Error fetching realtime visitors:', error);
+      setRealtimeVisitors(0);
+    }
+  }, [selectedWebsite]);
+
   const setupRealtimeSubscription = useCallback(() => {
     if (!selectedWebsite) return;
-    console.log('Real-time subscription would be set up here');
+    
+    // Initial fetch
+    fetchRealtimeVisitors();
+    
+    // Set up interval to update every 30 seconds
+    const interval = setInterval(fetchRealtimeVisitors, 30000);
+    
     return () => {
+      clearInterval(interval);
       console.log('Real-time subscription cleanup');
     };
-  }, [selectedWebsite]);
+  }, [selectedWebsite, fetchRealtimeVisitors]);
 
   useEffect(() => {
     const websiteId = searchParams.get('id');
