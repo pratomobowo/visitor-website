@@ -55,7 +55,7 @@ export async function GET(
     // Replace placeholders with actual values
     scriptContent = scriptContent
       .replace('https://your-app.vercel.app/api/track', apiUrl)
-      .replace('TRACKING_ID_PLACEHOLDER', trackingId);
+      .replace('WEBSITE_ID_PLACEHOLDER', (website as { id: string }).id); // Use actual website UUID, not tracking_id
     
     // Return the script with appropriate headers
     return new NextResponse(scriptContent, {

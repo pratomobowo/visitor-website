@@ -3,7 +3,7 @@
   // Configuration - these will be replaced when script is generated
   const config = {
     apiUrl: 'https://your-app.vercel.app/api/track',
-    trackingId: 'TRACKING_ID_PLACEHOLDER'
+    websiteId: 'WEBSITE_ID_PLACEHOLDER' // This will be replaced with the actual website UUID
   };
   
   // Test mode detection
@@ -17,7 +17,7 @@
   // Get visitor information
   function getVisitorInfo() {
     const info = {
-      website_id: config.trackingId,
+      website_id: config.websiteId, // Use the actual website UUID
       session_id: sessionId,
       page_url: window.location.href,
       page_title: document.title,

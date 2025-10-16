@@ -47,7 +47,6 @@ export async function POST(request: NextRequest) {
     };
     
     // Insert visitor data into PostgreSQL
-    console.log('Inserting visitor data:', visitorData);
     const insertData = await insertAndReturn('visitors', visitorData);
     
     console.log('Successfully inserted visitor data:', insertData);
