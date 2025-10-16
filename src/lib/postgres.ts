@@ -9,8 +9,9 @@ const pool = new Pool({
   password: process.env.POSTGRES_PASSWORD,
   max: 20, // Maximum number of connections in the pool
   idleTimeoutMillis: 30000, // How long a client is allowed to remain idle before being closed
-  connectionTimeoutMillis: 2000, // How long to wait when connecting a new client
+  connectionTimeoutMillis: 5000, // How long to wait when connecting a new client
 });
+
 
 // Database connection helper
 export async function getConnection(): Promise<PoolClient> {
