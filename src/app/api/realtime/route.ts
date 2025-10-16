@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
         WHERE visit_time >= NOW() - INTERVAL '30 minutes'
       `);
       
-      const count = realTimeVisitors[0]?.count || 0;
+      const count = (realTimeVisitors[0] as { count: string })?.count || 0;
       return NextResponse.json({ count });
     }
     
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
       AND visit_time >= NOW() - INTERVAL '30 minutes'
     `, [websiteId]);
     
-    const count = realTimeVisitors[0]?.count || 0;
+    const count = (realTimeVisitors[0] as { count: string })?.count || 0;
     return NextResponse.json({ count });
     
   } catch (error) {

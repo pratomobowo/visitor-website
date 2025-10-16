@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     
     // Get total count of visitors
     const totalVisitors = await query('SELECT COUNT(*) as count FROM visitors');
-    console.log('DEBUG: Total visitors in database:', totalVisitors[0]?.count || 0);
+    console.log('DEBUG: Total visitors in database:', (totalVisitors[0] as { count: string })?.count || 0);
     
     // Get all websites
     const websites = await query('SELECT * FROM websites');
@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
           'SELECT COUNT(*) as count FROM visitors WHERE website_id = $1',
           [website.id]
         );
-        console.log(`DEBUG: Website ${website.name} (${website.id}) has ${websiteVisitors[0]?.count || 0} visitors`);
+        console.log(`DEBUG: Website ${website.name} (${website.id}) has ${(websiteVisitors[0] as { count: string })?.count || 0} visitors`);
       }
     }
     
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
       console.log('DEBUG: All visitors (sample):', allVisitors?.length || 0);
       
       return NextResponse.json({
-        totalVisitors: totalVisitors[0]?.count || 0,
+        totalVisitors: (totalVisitors[0] as { count: string })?.count || 0,
         totalWebsites: websites?.length || 0,
         recentVisitors: recentVisitors?.length || 0,
         allVisitors: allVisitors || [],
@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
     }
     
     return NextResponse.json({
-      totalVisitors: totalVisitors[0]?.count || 0,
+      totalVisitors: (totalVisitors[0] as { count: string })?.count || 0,
       totalWebsites: websites?.length || 0,
       recentVisitors: recentVisitors?.length || 0,
       visitors: recentVisitors || [],
@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('DEBUG: Error checking visitor data:', error);
     return NextResponse.json(
-      { error: 'Internal server error', details: error.message },
+      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }
