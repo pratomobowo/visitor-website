@@ -13,6 +13,7 @@ import {
   XMarkIcon,
   BellIcon,
   BeakerIcon,
+  UsersIcon,
 } from '@heroicons/react/24/outline';
 import { usePathname } from 'next/navigation';
 
@@ -74,6 +75,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     { name: 'Add Website', href: '/dashboard/add-website', icon: PlusCircleIcon },
     { name: 'Add Data', href: '/dashboard/add-data', icon: BeakerIcon },
     { name: 'Analytics', href: '/dashboard/analytics', icon: ChartBarIcon },
+    { name: 'Users', href: '/dashboard/users', icon: UsersIcon },
     { name: 'Settings', href: '/dashboard/settings', icon: Cog6ToothIcon },
   ];
 
