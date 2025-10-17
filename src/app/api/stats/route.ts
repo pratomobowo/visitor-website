@@ -146,36 +146,55 @@ function getDateRange(period: string) {
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   let startDate, endDate, groupBy;
   
-  switch (period) {
-    case 'today':
-      startDate = today;
-      endDate = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+  // Handle custom date range
+  if (period.startsWith('custom:')) {
+    const [, startDateStr, endDateStr] = period.split(':');
+    startDate = new Date(startDateStr);
+    // Set end date to end of day (23:59:59)
+    endDate = new Date(endDateStr);
+    endDate.setHours(23, 59, 59, 999);
+    
+    // Determine grouping based on date range length
+    const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+    if (daysDiff <= 1) {
       groupBy = 'hour';
-      break;
-    case 'yesterday':
-      startDate = new Date(today.getTime() - 24 * 60 * 60 * 1000);
-      endDate = today;
-      groupBy = 'hour';
-      break;
-    case 'week':
-      startDate = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-      endDate = now;
+    } else if (daysDiff <= 31) {
       groupBy = 'day';
-      break;
-    case 'month':
-      startDate = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
-      endDate = now;
-      groupBy = 'day';
-      break;
-    case 'year':
-      startDate = new Date(today.getTime() - 365 * 24 * 60 * 60 * 1000);
-      endDate = now;
+    } else {
       groupBy = 'month';
-      break;
-    default:
-      startDate = today;
-      endDate = new Date(today.getTime() + 24 * 60 * 60 * 1000);
-      groupBy = 'hour';
+    }
+  } else {
+    switch (period) {
+      case 'today':
+        startDate = today;
+        endDate = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+        groupBy = 'hour';
+        break;
+      case 'yesterday':
+        startDate = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+        endDate = today;
+        groupBy = 'hour';
+        break;
+      case 'week':
+        startDate = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+        endDate = now;
+        groupBy = 'day';
+        break;
+      case 'month':
+        startDate = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+        endDate = now;
+        groupBy = 'day';
+        break;
+      case 'year':
+        startDate = new Date(today.getTime() - 365 * 24 * 60 * 60 * 1000);
+        endDate = now;
+        groupBy = 'month';
+        break;
+      default:
+        startDate = today;
+        endDate = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+        groupBy = 'hour';
+    }
   }
   
   return { startDate, endDate, groupBy };

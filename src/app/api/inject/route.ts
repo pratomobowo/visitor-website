@@ -6,7 +6,7 @@ export const runtime = 'nodejs';
 
 export async function POST(request: NextRequest) {
   try {
-    const { websiteId, visitorCount, dateRange, distribution } = await request.json();
+    const { websiteId, visitorCount, dateRange, distribution, year, month } = await request.json();
     
     if (!websiteId || !visitorCount) {
       return NextResponse.json(
@@ -34,7 +34,9 @@ export async function POST(request: NextRequest) {
       websiteId,
       visitorCount,
       dateRange || 'today',
-      distribution || 'even'
+      distribution || 'even',
+      year,
+      month
     );
     
     // Insert data in batches to avoid timeout
@@ -48,8 +50,8 @@ export async function POST(request: NextRequest) {
       
       // Create placeholder string for batch insert
       const placeholders = batch.map((_, index) => {
-        const offset = index * 13; // 13 fields per visitor
-        return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13})`;
+        const offset = index * 15; // 15 fields per visitor (website_id through device_type)
+        return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14}, $${offset + 15})`;
       }).join(', ');
       
       // Flatten all values
@@ -110,7 +112,9 @@ function generateFakeVisitors(
   websiteId: string,
   count: number,
   dateRange: string,
-  distribution: string
+  distribution: string,
+  year?: string,
+  month?: string
 ): {
   website_id: string;
   session_id: string;
@@ -132,27 +136,39 @@ function generateFakeVisitors(
   const now = new Date();
   let startDate, endDate;
   
-  // Set date range
-  switch (dateRange) {
-    case 'today':
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      endDate = now;
-      break;
-    case 'yesterday':
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      break;
-    case 'week':
-      startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      endDate = now;
-      break;
-    case 'month':
-      startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      endDate = now;
-      break;
-    default:
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      endDate = now;
+  // If year and month are provided, use them to set the date range
+  if (year && month) {
+    const selectedYear = parseInt(year);
+    const selectedMonth = parseInt(month) - 1; // JavaScript months are 0-indexed
+    
+    // Set start date to beginning of the selected month
+    startDate = new Date(selectedYear, selectedMonth, 1);
+    
+    // Set end date to end of the selected month
+    endDate = new Date(selectedYear, selectedMonth + 1, 0); // Last day of the month
+  } else {
+    // Fallback to original date range logic
+    switch (dateRange) {
+      case 'today':
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        endDate = now;
+        break;
+      case 'yesterday':
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+        endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        break;
+      case 'week':
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        endDate = now;
+        break;
+      case 'month':
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        endDate = now;
+        break;
+      default:
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        endDate = now;
+    }
   }
   
   // Generate visitors

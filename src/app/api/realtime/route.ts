@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
       `);
       
       const count = (realTimeVisitors[0] as { count: string })?.count || 0;
+      console.log('DEBUG: Total realtime visitors (all websites):', count);
       return NextResponse.json({ count });
     }
     
@@ -30,6 +31,7 @@ export async function GET(request: NextRequest) {
     `, [websiteId]);
     
     const count = (realTimeVisitors[0] as { count: string })?.count || 0;
+    console.log('DEBUG: Realtime visitors for website', websiteId, ':', count);
     return NextResponse.json({ count });
     
   } catch (error) {
