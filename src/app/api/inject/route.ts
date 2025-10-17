@@ -185,7 +185,7 @@ function generateFakeVisitors(
       page_url: generateRandomPageUrl(website.domain),
       page_title: generateRandomPageTitle(),
       visit_time: visitTime.toISOString(),
-      duration_seconds: Math.floor(Math.random() * 300) + 10, // 10-310 seconds
+      duration_seconds: Math.floor(Math.random() * 300) + 10, // 10-310 seconds (already integer)
       is_fake: true,
       country: generateRandomCountry(),
       city: generateRandomCity(),

@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
       page_url,
       page_title: page_title || 'Unknown Page',
       visit_time: new Date().toISOString(),
-      duration_seconds: data.duration_seconds || 0,
+      duration_seconds: Math.round(data.duration_seconds) || 0,
       is_fake: data.is_fake || false,
       country: data.country || null,
       city: data.city || null,
