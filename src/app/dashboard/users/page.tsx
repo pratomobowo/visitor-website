@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/app/auth-provider';
-import { User } from '@/lib/auth';
 import {
   PlusIcon,
   PencilIcon,

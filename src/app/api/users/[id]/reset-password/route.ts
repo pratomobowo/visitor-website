@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { queryOne, updateAndReturn } from '@/lib/postgres';
-import { getUserFromToken, User, hashPassword } from '@/lib/auth';
+import { getUserFromToken, hashPassword } from '@/lib/auth';
 
 // Reset user password (admin only)
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     // Get token from cookies
     const token = request.cookies.get('auth-token')?.value;
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         { status: 403 }
       );
     }
-    const { id } = params;
+    const { id } = await params;
     const { newPassword } = await request.json();
 
     // Validate input

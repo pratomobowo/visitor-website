@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, queryOne } from '@/lib/postgres';
-import { getUserFromToken, User, hashPassword } from '@/lib/auth';
+import { getUserFromToken, hashPassword } from '@/lib/auth';
 
 // Get all users (admin only)
 export async function GET(request: NextRequest) {

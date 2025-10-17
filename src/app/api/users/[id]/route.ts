@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { queryOne, deleteAndReturn, updateAndReturn } from '@/lib/postgres';
-import { getUserFromToken, User, hashPassword } from '@/lib/auth';
+import { getUserFromToken } from '@/lib/auth';
 
 // Get a specific user (admin only)
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     // Get token from cookies
     const token = request.cookies.get('auth-token')?.value;
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         { status: 403 }
       );
     }
-    const { id } = params;
+    const { id } = await params;
 
     const userRecord = await queryOne(
       `SELECT id, email, name, role, created_at, updated_at, last_login 
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 }
 
 // Update user (admin only)
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     // Get token from cookies
     const token = request.cookies.get('auth-token')?.value;
@@ -86,7 +86,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         { status: 403 }
       );
     }
-    const { id } = params;
+    const { id } = await params;
     const { email, name, role } = await request.json();
 
     // Check if user exists
@@ -121,7 +121,9 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     );
 
     // Remove password hash from response
-    const { password_hash, ...userResponse } = updatedUser as any;
+    const updatedUserRecord = updatedUser as Record<string, unknown>;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { password_hash, ...userResponse } = updatedUserRecord;
 
     return NextResponse.json(
       { message: 'User updated successfully', user: userResponse },
@@ -137,7 +139,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 }
 
 // Delete user (admin only)
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     // Get token from cookies
     const token = request.cookies.get('auth-token')?.value;
@@ -165,7 +167,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
         { status: 403 }
       );
     }
-    const { id } = params;
+    const { id } = await params;
 
     // Prevent admin from deleting themselves
     if (id === user.id) {
