@@ -1,8 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { PlusCircleIcon } from '@heroicons/react/24/outline';
-import { query } from '@/lib/postgres';
 
 interface Website {
   id: string;
@@ -43,11 +42,7 @@ export default function AddDataPage() {
     { value: '12', label: 'December' },
   ];
 
-  useEffect(() => {
-    fetchWebsites();
-  }, []);
-
-  const fetchWebsites = async () => {
+  const fetchWebsites = useCallback(async () => {
     setLoading(true);
     try {
       const response = await fetch('/api/websites');
@@ -63,7 +58,11 @@ export default function AddDataPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedWebsite]);
+
+  useEffect(() => {
+    fetchWebsites();
+  }, [fetchWebsites]);
 
   const handleInject = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -97,7 +96,7 @@ export default function AddDataPage() {
           message: data.error || 'Failed to inject data'
         });
       }
-    } catch (error) {
+    } catch {
       setResult({
         success: false,
         message: 'An error occurred while injecting data'

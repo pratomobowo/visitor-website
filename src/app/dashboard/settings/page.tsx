@@ -1,6 +1,5 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import { Cog6ToothIcon } from '@heroicons/react/24/outline';
 
 export default function SettingsPage() {

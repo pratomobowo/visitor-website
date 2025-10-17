@@ -6,19 +6,26 @@ export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
   try {
+    console.log('Auth /me API called');
+    
     // Get token from cookies
     const token = request.cookies.get('auth-token')?.value;
+    console.log('Token found:', !!token);
     
     if (!token) {
+      console.log('No authentication token found in cookies');
       return NextResponse.json(
         { error: 'No authentication token found' },
         { status: 401 }
       );
     }
     
+    console.log('Verifying token...');
     const user = await getUserFromToken(token);
+    console.log('User from token:', !!user);
     
     if (!user) {
+      console.log('Invalid or expired token');
       return NextResponse.json(
         { error: 'Invalid or expired token' },
         { status: 401 }
