@@ -8,20 +8,40 @@ export async function POST(request: NextRequest) {
   try {
     const data = await request.json();
     
+    console.log('DEBUG: Received tracking data:', data);
+    
     // Validate required fields
     const { website_id, session_id, page_url, page_title } = data;
     
     if (!website_id || !session_id || !page_url) {
+      console.log('DEBUG: Missing required fields:', { website_id, session_id, page_url });
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
       );
     }
     
-    // Get IP address
-    const ip = request.headers.get('x-forwarded-for') ||
-               request.headers.get('x-real-ip') ||
-               'unknown';
+    console.log('DEBUG: website_id received:', website_id, 'type:', typeof website_id);
+    
+    // Get IP address (handle multiple IPs in x-forwarded-for header)
+    const forwardedFor = request.headers.get('x-forwarded-for');
+    const realIp = request.headers.get('x-real-ip');
+    
+    let ip = 'unknown';
+    if (forwardedFor) {
+      // x-forwarded-for can contain multiple IPs, take the first one
+      ip = forwardedFor.split(',')[0].trim();
+    } else if (realIp) {
+      ip = realIp;
+    }
+    
+    // Validate IP format (basic validation)
+    if (ip !== 'unknown' && !/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip)) {
+      console.log('DEBUG: Invalid IP format, using unknown:', ip);
+      ip = 'unknown';
+    }
+    
+    console.log('DEBUG: Final IP address:', ip);
     
     // Parse user agent (simple implementation)
     const userAgentString = request.headers.get('user-agent') || data.user_agent || '';
@@ -31,7 +51,7 @@ export async function POST(request: NextRequest) {
     const visitorData = {
       website_id,
       session_id,
-      ip_address: ip,
+      ip_address: ip === 'unknown' ? null : ip, // Store null for unknown IPs
       user_agent: userAgentString,
       referrer: data.referrer || null,
       page_url,
@@ -47,6 +67,7 @@ export async function POST(request: NextRequest) {
     };
     
     // Insert visitor data into PostgreSQL
+    console.log('DEBUG: Inserting visitor data:', visitorData);
     const insertData = await insertAndReturn('visitors', visitorData);
     
     console.log('Successfully inserted visitor data:', insertData);
