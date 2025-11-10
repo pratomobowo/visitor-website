@@ -14,6 +14,7 @@ import {
   BellIcon,
   BeakerIcon,
   UsersIcon,
+  ChevronDownIcon,
 } from '@heroicons/react/24/outline';
 import { usePathname } from 'next/navigation';
 
@@ -25,6 +26,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [analyticsSubmenuOpen, setAnalyticsSubmenuOpen] = useState(true);
   const [notifications, setNotifications] = useState([
     { id: 1, text: 'New visitor spike detected', time: '5 min ago', read: false },
     { id: 2, text: 'Website example.com is down', time: '1 hour ago', read: false },
@@ -74,10 +76,22 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     { name: 'Websites', href: '/dashboard/websites', icon: GlobeAltIcon },
     { name: 'Add Website', href: '/dashboard/add-website', icon: PlusCircleIcon },
     { name: 'Add Data', href: '/dashboard/add-data', icon: BeakerIcon },
-    { name: 'Analytics', href: '/dashboard/analytics', icon: ChartBarIcon },
+    {
+      name: 'Analytics',
+      icon: ChartBarIcon,
+      submenu: [
+        { name: 'Website Analytics', href: '/dashboard/analytics/website' },
+        { name: 'Monthly Analytics', href: '/dashboard/analytics/monthly' },
+        { name: 'Yearly Analytics', href: '/dashboard/analytics/yearly' },
+        { name: 'Realtime Analytics', href: '/dashboard/analytics/realtime' },
+      ],
+    },
     { name: 'Users', href: '/dashboard/users', icon: UsersIcon },
     { name: 'Settings', href: '/dashboard/settings', icon: Cog6ToothIcon },
   ];
+
+  // Check if current path is in Analytics submenu
+  const isAnalyticsActive = pathname.startsWith('/dashboard/analytics');
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -106,7 +120,53 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             </div>
             <nav className="mt-8 px-2 space-y-1">
               {navigation.map((item) => {
-                const isActive = pathname === item.href;
+                const isActive = item.href ? pathname === item.href : isAnalyticsActive;
+                const hasSubmenu = 'submenu' in item;
+
+                if (hasSubmenu) {
+                  return (
+                    <div key={item.name}>
+                      <button
+                        onClick={() => setAnalyticsSubmenuOpen(!analyticsSubmenuOpen)}
+                        className={`w-full group flex items-center px-2 py-2 text-sm font-medium rounded-md ${
+                          isActive
+                            ? 'bg-indigo-100 text-indigo-700'
+                            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                        }`}
+                      >
+                        <item.icon
+                          className={`mr-3 h-5 w-5 ${
+                            isActive ? 'text-indigo-500' : 'text-gray-400 group-hover:text-gray-500'
+                          }`}
+                          aria-hidden="true"
+                        />
+                        <span className="flex-1 text-left">{item.name}</span>
+                        <ChevronDownIcon
+                          className={`h-4 w-4 transition-transform ${analyticsSubmenuOpen ? 'rotate-180' : ''}`}
+                          aria-hidden="true"
+                        />
+                      </button>
+                      {analyticsSubmenuOpen && (
+                        <div className="ml-4 mt-1 space-y-1">
+                          {item.submenu?.map((subitem) => (
+                            <a
+                              key={subitem.name}
+                              href={subitem.href}
+                              className={`block px-2 py-2 text-sm rounded-md ${
+                                pathname === subitem.href
+                                  ? 'bg-indigo-100 text-indigo-700'
+                                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                              }`}
+                            >
+                              {subitem.name}
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
                 return (
                   <a
                     key={item.name}
@@ -158,7 +218,53 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           <div className="flex-grow flex flex-col">
             <nav className="flex-1 px-2 py-4 space-y-1">
               {navigation.map((item) => {
-                const isActive = pathname === item.href;
+                const isActive = item.href ? pathname === item.href : isAnalyticsActive;
+                const hasSubmenu = 'submenu' in item;
+
+                if (hasSubmenu) {
+                  return (
+                    <div key={item.name}>
+                      <button
+                        onClick={() => setAnalyticsSubmenuOpen(!analyticsSubmenuOpen)}
+                        className={`w-full group flex items-center px-2 py-2 text-sm font-medium rounded-md ${
+                          isActive
+                            ? 'bg-indigo-100 text-indigo-700'
+                            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                        }`}
+                      >
+                        <item.icon
+                          className={`mr-3 h-5 w-5 ${
+                            isActive ? 'text-indigo-500' : 'text-gray-400 group-hover:text-gray-500'
+                          }`}
+                          aria-hidden="true"
+                        />
+                        <span className="flex-1 text-left">{item.name}</span>
+                        <ChevronDownIcon
+                          className={`h-4 w-4 transition-transform ${analyticsSubmenuOpen ? 'rotate-180' : ''}`}
+                          aria-hidden="true"
+                        />
+                      </button>
+                      {analyticsSubmenuOpen && (
+                        <div className="ml-4 mt-1 space-y-1">
+                          {item.submenu?.map((subitem) => (
+                            <a
+                              key={subitem.name}
+                              href={subitem.href}
+                              className={`block px-2 py-2 text-sm rounded-md ${
+                                pathname === subitem.href
+                                  ? 'bg-indigo-100 text-indigo-700'
+                                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                              }`}
+                            >
+                              {subitem.name}
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
                 return (
                   <a
                     key={item.name}
