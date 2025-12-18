@@ -8,6 +8,9 @@ import {
   ChartBarIcon,
   TrashIcon,
   ArrowRightIcon,
+  CodeBracketIcon,
+  ClipboardDocumentIcon,
+  CheckIcon,
 } from '@heroicons/react/24/outline';
 
 interface Website {
@@ -23,7 +26,12 @@ export default function WebsitesPage() {
   const [selectedWebsite, setSelectedWebsite] = useState<Website | null>(null);
   const [websites, setWebsites] = useState<Website[]>([]);
   const [deleting, setDeleting] = useState<string | null>(null);
-  
+
+  // Widget embed state
+  const [widgetTheme, setWidgetTheme] = useState<'light' | 'dark'>('dark');
+  const [widgetLabel, setWidgetLabel] = useState('');
+  const [embedCopied, setEmbedCopied] = useState(false);
+
   const searchParams = useSearchParams();
 
   useEffect(() => {
@@ -34,11 +42,18 @@ export default function WebsitesPage() {
     fetchWebsites();
   }, [searchParams]);
 
+  // Reset widget label when website changes
+  useEffect(() => {
+    if (selectedWebsite) {
+      setWidgetLabel(selectedWebsite.name);
+    }
+  }, [selectedWebsite]);
+
   const fetchWebsites = async () => {
     try {
       const response = await fetch('/api/websites');
       const data = await response.json();
-      
+
       if (data.websites) {
         setWebsites(data.websites);
       }
@@ -51,7 +66,7 @@ export default function WebsitesPage() {
     try {
       const response = await fetch('/api/websites');
       const data = await response.json();
-      
+
       if (data.websites) {
         const website = data.websites.find((w: { id: string }) => w.id === id);
         if (website) {
@@ -81,7 +96,7 @@ export default function WebsitesPage() {
 
       // Refresh websites list
       await fetchWebsites();
-      
+
       // If the deleted website was selected, clear selection
       if (selectedWebsite?.id === websiteId) {
         setSelectedWebsite(null);
@@ -108,10 +123,36 @@ export default function WebsitesPage() {
 </script>`;
   };
 
+  const getWidgetEmbedCode = (trackingId: string) => {
+    const baseUrl = window.location.origin;
+    const encodedLabel = encodeURIComponent(widgetLabel || 'Visitor Counter');
+    return `<iframe 
+  src="${baseUrl}/widget/${trackingId}?theme=${widgetTheme}&label=${encodedLabel}" 
+  width="220" 
+  height="260" 
+  frameborder="0"
+  style="border:none; border-radius:16px;"
+></iframe>`;
+  };
+
+  const getWidgetPreviewUrl = (trackingId: string) => {
+    const encodedLabel = encodeURIComponent(widgetLabel || 'Visitor Counter');
+    return `/widget/${trackingId}?theme=${widgetTheme}&label=${encodedLabel}`;
+  };
+
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text).then(() => {
       alert('Tracking code copied to clipboard!');
     });
+  };
+
+  const copyWidgetEmbed = () => {
+    if (selectedWebsite) {
+      navigator.clipboard.writeText(getWidgetEmbedCode(selectedWebsite.tracking_id)).then(() => {
+        setEmbedCopied(true);
+        setTimeout(() => setEmbedCopied(false), 2000);
+      });
+    }
   };
 
   return (
@@ -156,11 +197,10 @@ export default function WebsitesPage() {
               {websites.map((website) => (
                 <div
                   key={website.id}
-                  className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                    selectedWebsite?.id === website.id
+                  className={`p-3 border rounded-lg cursor-pointer transition-colors ${selectedWebsite?.id === website.id
                       ? 'border-indigo-500 bg-indigo-50'
                       : 'border-gray-200 hover:border-gray-300'
-                  }`}
+                    }`}
                   onClick={() => setSelectedWebsite(website)}
                 >
                   <div className="flex items-start justify-between">
@@ -172,9 +212,8 @@ export default function WebsitesPage() {
                         {website.domain}
                       </p>
                       <div className="flex items-center mt-2">
-                        <div className={`w-2 h-2 rounded-full mr-2 ${
-                          website.is_active ? 'bg-green-500' : 'bg-gray-400'
-                        }`}></div>
+                        <div className={`w-2 h-2 rounded-full mr-2 ${website.is_active ? 'bg-green-500' : 'bg-gray-400'
+                          }`}></div>
                         <span className="text-xs text-gray-500">
                           {website.is_active ? 'Active' : 'Inactive'}
                         </span>
@@ -243,15 +282,12 @@ export default function WebsitesPage() {
                     </p>
                   </div>
                   <div className="mt-4 sm:mt-0 flex items-center space-x-3">
-                    <div className={`flex items-center space-x-2 px-3 py-1 rounded-full ${
-                      selectedWebsite.is_active ? 'bg-green-100' : 'bg-gray-100'
-                    }`}>
-                      <div className={`w-2 h-2 rounded-full ${
-                        selectedWebsite.is_active ? 'bg-green-500' : 'bg-gray-400'
-                      }`}></div>
-                      <span className={`text-sm font-medium ${
-                        selectedWebsite.is_active ? 'text-green-800' : 'text-gray-800'
+                    <div className={`flex items-center space-x-2 px-3 py-1 rounded-full ${selectedWebsite.is_active ? 'bg-green-100' : 'bg-gray-100'
                       }`}>
+                      <div className={`w-2 h-2 rounded-full ${selectedWebsite.is_active ? 'bg-green-500' : 'bg-gray-400'
+                        }`}></div>
+                      <span className={`text-sm font-medium ${selectedWebsite.is_active ? 'text-green-800' : 'text-gray-800'
+                        }`}>
                         {selectedWebsite.is_active ? 'Active' : 'Inactive'}
                       </span>
                     </div>
@@ -290,6 +326,107 @@ export default function WebsitesPage() {
                   <pre className="text-xs text-gray-600 overflow-x-auto whitespace-pre-wrap break-all">
                     {getTrackingCode(selectedWebsite.tracking_id)}
                   </pre>
+                </div>
+              </div>
+
+              {/* Widget Embed Code Generator */}
+              <div className="bg-white shadow rounded-lg p-6">
+                <div className="flex items-center mb-4">
+                  <CodeBracketIcon className="h-5 w-5 text-indigo-600 mr-2" />
+                  <h3 className="text-lg font-medium text-gray-900">Widget Embed Code</h3>
+                </div>
+                <p className="text-sm text-gray-500 mb-6">
+                  Generate an embeddable widget to display visitor statistics on your website footer.
+                </p>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Customization Options */}
+                  <div className="space-y-4">
+                    {/* Theme Selector */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Theme
+                      </label>
+                      <div className="flex space-x-3">
+                        <button
+                          onClick={() => setWidgetTheme('light')}
+                          className={`flex-1 px-4 py-2 rounded-lg border-2 transition-all ${widgetTheme === 'light'
+                              ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                              : 'border-gray-200 hover:border-gray-300 text-gray-700'
+                            }`}
+                        >
+                          ☀️ Light
+                        </button>
+                        <button
+                          onClick={() => setWidgetTheme('dark')}
+                          className={`flex-1 px-4 py-2 rounded-lg border-2 transition-all ${widgetTheme === 'dark'
+                              ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                              : 'border-gray-200 hover:border-gray-300 text-gray-700'
+                            }`}
+                        >
+                          🌙 Dark
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Custom Label */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Widget Label
+                      </label>
+                      <input
+                        type="text"
+                        value={widgetLabel}
+                        onChange={(e) => setWidgetLabel(e.target.value)}
+                        placeholder="Enter custom label"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900"
+                      />
+                    </div>
+
+                    {/* Embed Code */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Embed Code
+                      </label>
+                      <div className="relative">
+                        <pre className="p-3 bg-gray-900 text-green-400 text-xs rounded-lg overflow-x-auto whitespace-pre-wrap break-all">
+                          {getWidgetEmbedCode(selectedWebsite.tracking_id)}
+                        </pre>
+                        <button
+                          onClick={copyWidgetEmbed}
+                          className="absolute top-2 right-2 p-2 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors"
+                          title="Copy embed code"
+                        >
+                          {embedCopied ? (
+                            <CheckIcon className="h-4 w-4 text-green-400" />
+                          ) : (
+                            <ClipboardDocumentIcon className="h-4 w-4 text-gray-300" />
+                          )}
+                        </button>
+                      </div>
+                      {embedCopied && (
+                        <p className="text-sm text-green-600 mt-2">✓ Copied to clipboard!</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Live Preview */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Live Preview
+                    </label>
+                    <div className={`p-4 rounded-lg flex items-center justify-center ${widgetTheme === 'dark' ? 'bg-gray-800' : 'bg-gray-100'
+                      }`} style={{ minHeight: '300px' }}>
+                      <iframe
+                        src={getWidgetPreviewUrl(selectedWebsite.tracking_id)}
+                        width="220"
+                        height="260"
+                        frameBorder="0"
+                        style={{ border: 'none', borderRadius: '16px' }}
+                        title="Widget Preview"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 
