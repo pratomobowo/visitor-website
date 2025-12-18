@@ -3,11 +3,18 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 
+interface ChartDataPoint {
+    day: string;
+    count: number;
+}
+
 interface WidgetData {
     websiteName: string;
     onlineVisitors: number;
     todayVisitors: number;
     yesterdayVisitors: number;
+    thisMonthVisitors: number;
+    chartData: ChartDataPoint[];
 }
 
 export default function WidgetPage() {
@@ -20,7 +27,6 @@ export default function WidgetPage() {
     const [loading, setLoading] = useState(true);
 
     // Get customization options from query params
-    const theme = searchParams.get('theme') || 'light';
     const customLabel = searchParams.get('label');
 
     const fetchData = useCallback(async () => {
@@ -47,79 +53,62 @@ export default function WidgetPage() {
         return () => clearInterval(interval);
     }, [fetchData]);
 
-    const isDark = theme === 'dark';
     const label = customLabel || data?.websiteName || 'Visitor Counter';
 
-    // Theme styles
-    const containerStyle: React.CSSProperties = {
-        fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-        width: '200px',
-        padding: '16px',
-        borderRadius: '16px',
-        background: isDark
-            ? 'linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%)'
-            : 'linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(248, 250, 252, 0.98) 100%)',
-        backdropFilter: 'blur(10px)',
-        boxShadow: isDark
-            ? '0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
-            : '0 8px 32px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.8)',
-        border: isDark
-            ? '1px solid rgba(255, 255, 255, 0.1)'
-            : '1px solid rgba(0, 0, 0, 0.05)',
-        color: isDark ? '#f1f5f9' : '#1e293b',
+    // Format number with comma separator
+    const formatNumber = (num: number): string => {
+        return num.toLocaleString('id-ID');
     };
 
-    const headerStyle: React.CSSProperties = {
-        fontSize: '12px',
-        fontWeight: 600,
-        textAlign: 'center',
-        marginBottom: '12px',
-        paddingBottom: '10px',
-        borderBottom: isDark
-            ? '1px solid rgba(255, 255, 255, 0.1)'
-            : '1px solid rgba(0, 0, 0, 0.08)',
-        color: isDark ? '#94a3b8' : '#64748b',
-        letterSpacing: '0.5px',
-        textTransform: 'uppercase',
+    // Generate SVG path for line chart
+    const generateChartPath = (chartData: ChartDataPoint[]): string => {
+        if (!chartData || chartData.length === 0) return '';
+
+        const maxCount = Math.max(...chartData.map(d => d.count), 1);
+        const width = 280;
+        const height = 80;
+        const padding = 10;
+
+        const points = chartData.map((d, i) => {
+            const x = padding + (i / (chartData.length - 1 || 1)) * (width - padding * 2);
+            const y = height - padding - (d.count / maxCount) * (height - padding * 2);
+            return `${x},${y}`;
+        });
+
+        return `M ${points.join(' L ')}`;
     };
 
-    const statItemStyle: React.CSSProperties = {
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        padding: '10px 0',
-        borderBottom: isDark
-            ? '1px solid rgba(255, 255, 255, 0.05)'
-            : '1px solid rgba(0, 0, 0, 0.04)',
-    };
+    // Generate dots for chart
+    const generateChartDots = (chartData: ChartDataPoint[]): { x: number; y: number; count: number }[] => {
+        if (!chartData || chartData.length === 0) return [];
 
-    const statNumberStyle: React.CSSProperties = {
-        fontSize: '24px',
-        fontWeight: 700,
-        lineHeight: 1.2,
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-    };
+        const maxCount = Math.max(...chartData.map(d => d.count), 1);
+        const width = 280;
+        const height = 80;
+        const padding = 10;
 
-    const statLabelStyle: React.CSSProperties = {
-        fontSize: '11px',
-        fontWeight: 500,
-        marginTop: '4px',
-        color: isDark ? '#94a3b8' : '#64748b',
-        textTransform: 'uppercase',
-        letterSpacing: '0.5px',
+        return chartData.map((d, i) => ({
+            x: padding + (i / (chartData.length - 1 || 1)) * (width - padding * 2),
+            y: height - padding - (d.count / maxCount) * (height - padding * 2),
+            count: d.count
+        }));
     };
 
     if (loading) {
         return (
-            <div style={containerStyle}>
-                <div style={{ textAlign: 'center', padding: '20px 0' }}>
+            <div style={{
+                width: '320px',
+                padding: '24px',
+                background: '#1a1a2e',
+                borderRadius: '16px',
+                fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+            }}>
+                <div style={{ textAlign: 'center', padding: '40px 0' }}>
                     <div style={{
-                        width: '24px',
-                        height: '24px',
-                        border: `2px solid ${isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)'}`,
-                        borderTopColor: isDark ? '#60a5fa' : '#3b82f6',
+                        width: '32px',
+                        height: '32px',
+                        border: '3px solid rgba(99, 102, 241, 0.3)',
+                        borderTopColor: '#6366f1',
                         borderRadius: '50%',
                         animation: 'spin 1s linear infinite',
                         margin: '0 auto',
@@ -132,17 +121,33 @@ export default function WidgetPage() {
 
     if (error) {
         return (
-            <div style={containerStyle}>
-                <div style={{ textAlign: 'center', padding: '20px 0', color: '#ef4444' }}>
-                    {error}
-                </div>
+            <div style={{
+                width: '320px',
+                padding: '24px',
+                background: '#1a1a2e',
+                borderRadius: '16px',
+                fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+                color: '#ef4444',
+                textAlign: 'center',
+            }}>
+                {error}
             </div>
         );
     }
 
+    const chartPath = generateChartPath(data?.chartData || []);
+    const chartDots = generateChartDots(data?.chartData || []);
+
     return (
-        <div style={containerStyle}>
-            {/* Pulse animation style */}
+        <div style={{
+            width: '320px',
+            padding: '24px',
+            background: 'linear-gradient(180deg, #1a1a2e 0%, #16162a 100%)',
+            borderRadius: '16px',
+            fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+            color: '#ffffff',
+            boxShadow: '0 20px 40px rgba(0, 0, 0, 0.4)',
+        }}>
             <style>{`
         @keyframes pulse {
           0%, 100% { opacity: 1; }
@@ -153,47 +158,181 @@ export default function WidgetPage() {
         }
       `}</style>
 
-            {/* Header */}
-            <div style={headerStyle}>{label}</div>
-
-            {/* Online Now */}
-            <div style={statItemStyle}>
-                <div style={statNumberStyle}>
-                    <span
+            {/* Header with Online indicator */}
+            <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: '8px'
+            }}>
+                <div style={{
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    color: '#9ca3af',
+                    letterSpacing: '1.5px',
+                    textTransform: 'uppercase',
+                }}>
+                    {label}
+                </div>
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '4px 10px',
+                    background: 'rgba(34, 197, 94, 0.15)',
+                    borderRadius: '12px',
+                }}>
+                    <div
                         className="pulse-dot"
                         style={{
-                            width: '10px',
-                            height: '10px',
+                            width: '8px',
+                            height: '8px',
                             borderRadius: '50%',
                             backgroundColor: '#22c55e',
                             boxShadow: '0 0 8px rgba(34, 197, 94, 0.6)',
                         }}
                     />
-                    <span style={{ color: '#22c55e' }}>{data?.onlineVisitors || 0}</span>
-                </div>
-                <div style={statLabelStyle}>Online Now</div>
-            </div>
-
-            {/* Today */}
-            <div style={statItemStyle}>
-                <div style={statNumberStyle}>
-                    <span style={{ fontSize: '18px' }}>👁</span>
-                    <span style={{ color: isDark ? '#60a5fa' : '#3b82f6' }}>
-                        {data?.todayVisitors || 0}
+                    <span style={{ fontSize: '12px', color: '#22c55e', fontWeight: 600 }}>
+                        {formatNumber(data?.onlineVisitors || 0)} Online
                     </span>
                 </div>
-                <div style={statLabelStyle}>Today</div>
             </div>
 
-            {/* Yesterday */}
-            <div style={{ ...statItemStyle, borderBottom: 'none', paddingBottom: 0 }}>
-                <div style={statNumberStyle}>
-                    <span style={{ fontSize: '18px' }}>📊</span>
-                    <span style={{ color: isDark ? '#a78bfa' : '#8b5cf6' }}>
-                        {data?.yesterdayVisitors || 0}
-                    </span>
+            {/* Today's Visitors - Main Number */}
+            <div style={{ marginBottom: '16px' }}>
+                <div style={{
+                    fontSize: '42px',
+                    fontWeight: 700,
+                    color: '#ffffff',
+                    lineHeight: 1.1,
+                }}>
+                    {formatNumber(data?.todayVisitors || 0)}
                 </div>
-                <div style={statLabelStyle}>Yesterday</div>
+                <div style={{
+                    fontSize: '12px',
+                    color: '#6b7280',
+                    marginTop: '4px',
+                }}>
+                    Visitors Today
+                </div>
+            </div>
+
+            {/* Line Chart */}
+            <div style={{
+                marginBottom: '20px',
+                background: 'rgba(99, 102, 241, 0.05)',
+                borderRadius: '12px',
+                padding: '12px 8px',
+            }}>
+                <svg width="280" height="80" viewBox="0 0 280 80" style={{ display: 'block' }}>
+                    {/* Gradient definition */}
+                    <defs>
+                        <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stopColor="#6366f1" />
+                            <stop offset="100%" stopColor="#818cf8" />
+                        </linearGradient>
+                        <filter id="glow">
+                            <feGaussianBlur stdDeviation="2" result="coloredBlur" />
+                            <feMerge>
+                                <feMergeNode in="coloredBlur" />
+                                <feMergeNode in="SourceGraphic" />
+                            </feMerge>
+                        </filter>
+                    </defs>
+
+                    {/* Line */}
+                    {chartPath && (
+                        <path
+                            d={chartPath}
+                            fill="none"
+                            stroke="url(#lineGradient)"
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            filter="url(#glow)"
+                        />
+                    )}
+
+                    {/* Dots */}
+                    {chartDots.map((dot, i) => (
+                        <circle
+                            key={i}
+                            cx={dot.x}
+                            cy={dot.y}
+                            r="4"
+                            fill="#6366f1"
+                            stroke="#1a1a2e"
+                            strokeWidth="2"
+                        />
+                    ))}
+                </svg>
+                <div style={{
+                    fontSize: '10px',
+                    color: '#6b7280',
+                    textAlign: 'center',
+                    marginTop: '4px',
+                }}>
+                    Last 7 Days Trend
+                </div>
+            </div>
+
+            {/* Stats Grid */}
+            <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '12px',
+            }}>
+                {/* Yesterday */}
+                <div style={{
+                    background: 'rgba(255, 255, 255, 0.03)',
+                    borderRadius: '12px',
+                    padding: '14px',
+                    border: '1px solid rgba(255, 255, 255, 0.05)',
+                }}>
+                    <div style={{
+                        fontSize: '10px',
+                        fontWeight: 600,
+                        color: '#6b7280',
+                        letterSpacing: '0.5px',
+                        textTransform: 'uppercase',
+                        marginBottom: '6px',
+                    }}>
+                        Yesterday
+                    </div>
+                    <div style={{
+                        fontSize: '22px',
+                        fontWeight: 700,
+                        color: '#e5e7eb',
+                    }}>
+                        {formatNumber(data?.yesterdayVisitors || 0)}
+                    </div>
+                </div>
+
+                {/* This Month */}
+                <div style={{
+                    background: 'rgba(255, 255, 255, 0.03)',
+                    borderRadius: '12px',
+                    padding: '14px',
+                    border: '1px solid rgba(255, 255, 255, 0.05)',
+                }}>
+                    <div style={{
+                        fontSize: '10px',
+                        fontWeight: 600,
+                        color: '#6b7280',
+                        letterSpacing: '0.5px',
+                        textTransform: 'uppercase',
+                        marginBottom: '6px',
+                    }}>
+                        This Month
+                    </div>
+                    <div style={{
+                        fontSize: '22px',
+                        fontWeight: 700,
+                        color: '#e5e7eb',
+                    }}>
+                        {formatNumber(data?.thisMonthVisitors || 0)}
+                    </div>
+                </div>
             </div>
         </div>
     );
