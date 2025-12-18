@@ -127,8 +127,8 @@ export default function WebsitesPage() {
     const encodedLabel = encodeURIComponent(widgetLabel || 'Visitor Counter');
     return `<iframe 
   src="${baseUrl}/widget/${trackingId}?label=${encodedLabel}" 
-  width="340" 
-  height="380" 
+  width="332" 
+  height="350" 
   frameborder="0"
   style="border:none; border-radius:16px;"
 ></iframe>`;
@@ -389,11 +389,11 @@ export default function WebsitesPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Live Preview
                   </label>
-                  <div className="p-4 rounded-lg flex items-center justify-center bg-gray-800" style={{ minHeight: '420px' }}>
+                  <div className="p-4 rounded-lg flex items-center justify-center bg-gray-800" style={{ minHeight: '380px' }}>
                     <iframe
                       src={getWidgetPreviewUrl(selectedWebsite.tracking_id)}
-                      width="340"
-                      height="380"
+                      width="332"
+                      height="350"
                       frameBorder="0"
                       style={{ border: 'none', borderRadius: '16px' }}
                       title="Widget Preview"
