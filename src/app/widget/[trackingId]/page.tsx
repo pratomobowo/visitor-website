@@ -60,62 +60,151 @@ export default function WidgetPage() {
         return num.toLocaleString('id-ID');
     };
 
-    // Generate SVG path for line chart
-    const generateChartPath = (chartData: ChartDataPoint[]): string => {
-        if (!chartData || chartData.length === 0) return '';
-
-        const maxCount = Math.max(...chartData.map(d => d.count), 1);
-        const width = 268;
-        const height = 50;
-        const padding = 8;
-
-        const points = chartData.map((d, i) => {
-            const x = padding + (i / (chartData.length - 1 || 1)) * (width - padding * 2);
-            const y = height - padding - (d.count / maxCount) * (height - padding * 2);
-            return `${x},${y}`;
-        });
-
-        return `M ${points.join(' L ')}`;
-    };
-
-    // Generate dots for chart
-    const generateChartDots = (chartData: ChartDataPoint[]): { x: number; y: number; count: number }[] => {
-        if (!chartData || chartData.length === 0) return [];
-
-        const maxCount = Math.max(...chartData.map(d => d.count), 1);
-        const width = 268;
-        const height = 50;
-        const padding = 8;
-
-        return chartData.map((d, i) => ({
-            x: padding + (i / (chartData.length - 1 || 1)) * (width - padding * 2),
-            y: height - padding - (d.count / maxCount) * (height - padding * 2),
-            count: d.count
-        }));
-    };
+    // Responsive styles
+    const styles = `
+        * { box-sizing: border-box; }
+        html, body { 
+            margin: 0; 
+            padding: 0; 
+            background: transparent; 
+            width: 100%; 
+            height: 100%;
+            overflow: hidden;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .pulse-dot {
+            animation: pulse 2s ease-in-out infinite;
+        }
+        .widget-container {
+            width: 100%;
+            height: 100%;
+            padding: 4%;
+            background: linear-gradient(180deg, #1a1a2e 0%, #16162a 100%);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+        }
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 3%;
+            flex-shrink: 0;
+        }
+        .label {
+            font-size: clamp(8px, 2.5vw, 11px);
+            font-weight: 600;
+            color: #9ca3af;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 50%;
+        }
+        .online-badge {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 8px;
+            background: rgba(34, 197, 94, 0.15);
+            border-radius: 10px;
+            flex-shrink: 0;
+        }
+        .online-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background-color: #22c55e;
+            box-shadow: 0 0 6px rgba(34, 197, 94, 0.6);
+        }
+        .online-text {
+            font-size: clamp(9px, 2.5vw, 11px);
+            color: #22c55e;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .main-stat {
+            margin-bottom: 3%;
+            flex-shrink: 0;
+        }
+        .main-number {
+            font-size: clamp(24px, 10vw, 42px);
+            font-weight: 700;
+            color: #ffffff;
+            line-height: 1.1;
+        }
+        .main-label {
+            font-size: clamp(9px, 2.5vw, 12px);
+            color: #6b7280;
+            margin-top: 2px;
+        }
+        .chart-container {
+            flex: 1;
+            min-height: 0;
+            background: rgba(99, 102, 241, 0.05);
+            border-radius: 8px;
+            padding: 3%;
+            margin-bottom: 3%;
+            display: flex;
+            flex-direction: column;
+        }
+        .chart-svg {
+            width: 100%;
+            flex: 1;
+            min-height: 30px;
+        }
+        .chart-label {
+            font-size: clamp(7px, 2vw, 9px);
+            color: #6b7280;
+            text-align: center;
+            margin-top: 2px;
+            flex-shrink: 0;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3%;
+            flex-shrink: 0;
+        }
+        .stat-card {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 8px;
+            padding: 3% 4%;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .stat-label {
+            font-size: clamp(7px, 2vw, 9px);
+            font-weight: 600;
+            color: #6b7280;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            margin-bottom: 3px;
+        }
+        .stat-value {
+            font-size: clamp(14px, 5vw, 20px);
+            font-weight: 700;
+            color: #e5e7eb;
+        }
+    `;
 
     if (loading) {
         return (
             <>
-                <style>{`body { margin: 0; padding: 0; background: transparent; }`}</style>
-                <div style={{
-                    width: '300px',
-                    padding: '16px',
-                    background: '#1a1a2e',
-                    borderRadius: '16px',
-                    fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-                }}>
-                    <div style={{ textAlign: 'center', padding: '40px 0' }}>
-                        <div style={{
-                            width: '32px',
-                            height: '32px',
-                            border: '3px solid rgba(99, 102, 241, 0.3)',
-                            borderTopColor: '#6366f1',
-                            borderRadius: '50%',
-                            animation: 'spin 1s linear infinite',
-                            margin: '0 auto',
-                        }} />
-                    </div>
+                <style>{styles}</style>
+                <div className="widget-container" style={{ justifyContent: 'center', alignItems: 'center' }}>
+                    <div style={{
+                        width: '24px',
+                        height: '24px',
+                        border: '3px solid rgba(99, 102, 241, 0.3)',
+                        borderTopColor: '#6366f1',
+                        borderRadius: '50%',
+                        animation: 'spin 1s linear infinite',
+                    }} />
                     <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
                 </div>
             </>
@@ -125,221 +214,100 @@ export default function WidgetPage() {
     if (error) {
         return (
             <>
-                <style>{`body { margin: 0; padding: 0; background: transparent; }`}</style>
-                <div style={{
-                    width: '300px',
-                    padding: '16px',
-                    background: '#1a1a2e',
-                    borderRadius: '16px',
-                    fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-                    color: '#ef4444',
-                    textAlign: 'center',
-                }}>
-                    {error}
+                <style>{styles}</style>
+                <div className="widget-container" style={{ justifyContent: 'center', alignItems: 'center' }}>
+                    <div style={{ color: '#ef4444', fontSize: 'clamp(10px, 3vw, 14px)', textAlign: 'center' }}>
+                        {error}
+                    </div>
                 </div>
             </>
         );
     }
 
-    const chartPath = generateChartPath(data?.chartData || []);
-    const chartDots = generateChartDots(data?.chartData || []);
+    // Generate SVG path for line chart
+    const chartData = data?.chartData || [];
+    const maxCount = Math.max(...chartData.map(d => d.count), 1);
+
+    const generatePath = () => {
+        if (chartData.length === 0) return '';
+        const points = chartData.map((d, i) => {
+            const x = 5 + (i / (chartData.length - 1 || 1)) * 90;
+            const y = 90 - (d.count / maxCount) * 80;
+            return `${x},${y}`;
+        });
+        return `M ${points.join(' L ')}`;
+    };
 
     return (
         <>
-            <style>{`
-                body { margin: 0; padding: 0; background: transparent; }
-                @keyframes pulse {
-                    0%, 100% { opacity: 1; }
-                    50% { opacity: 0.5; }
-                }
-                .pulse-dot {
-                    animation: pulse 2s ease-in-out infinite;
-                }
-            `}</style>
-            <div style={{
-                width: '300px',
-                padding: '16px',
-                background: 'linear-gradient(180deg, #1a1a2e 0%, #16162a 100%)',
-                borderRadius: '12px',
-                fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-                color: '#ffffff',
-                boxShadow: '0 10px 30px rgba(0, 0, 0, 0.3)',
-            }}>
-
-                {/* Header with Online indicator */}
-                <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    marginBottom: '8px'
-                }}>
-                    <div style={{
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        color: '#9ca3af',
-                        letterSpacing: '1.5px',
-                        textTransform: 'uppercase',
-                    }}>
-                        {label}
-                    </div>
-                    <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        padding: '4px 10px',
-                        background: 'rgba(34, 197, 94, 0.15)',
-                        borderRadius: '12px',
-                    }}>
-                        <div
-                            className="pulse-dot"
-                            style={{
-                                width: '8px',
-                                height: '8px',
-                                borderRadius: '50%',
-                                backgroundColor: '#22c55e',
-                                boxShadow: '0 0 8px rgba(34, 197, 94, 0.6)',
-                            }}
-                        />
-                        <span style={{ fontSize: '12px', color: '#22c55e', fontWeight: 600 }}>
+            <style>{styles}</style>
+            <div className="widget-container">
+                {/* Header */}
+                <div className="header">
+                    <div className="label">{label}</div>
+                    <div className="online-badge">
+                        <div className="online-dot pulse-dot" />
+                        <span className="online-text">
                             {formatNumber(data?.onlineVisitors || 0)} Online
                         </span>
                     </div>
                 </div>
 
-                {/* Today's Visitors - Main Number */}
-                <div style={{ marginBottom: '10px' }}>
-                    <div style={{
-                        fontSize: '36px',
-                        fontWeight: 700,
-                        color: '#ffffff',
-                        lineHeight: 1.1,
-                    }}>
-                        {formatNumber(data?.todayVisitors || 0)}
-                    </div>
-                    <div style={{
-                        fontSize: '11px',
-                        color: '#6b7280',
-                        marginTop: '2px',
-                    }}>
-                        Visitors Today
-                    </div>
+                {/* Main Stat */}
+                <div className="main-stat">
+                    <div className="main-number">{formatNumber(data?.todayVisitors || 0)}</div>
+                    <div className="main-label">Visitors Today</div>
                 </div>
 
-                {/* Line Chart */}
-                <div style={{
-                    marginBottom: '12px',
-                    background: 'rgba(99, 102, 241, 0.05)',
-                    borderRadius: '8px',
-                    padding: '8px 6px',
-                }}>
-                    <svg width="268" height="50" viewBox="0 0 268 50" style={{ display: 'block' }}>
-                        {/* Gradient definition */}
+                {/* Chart */}
+                <div className="chart-container">
+                    <svg className="chart-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
                         <defs>
                             <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
                                 <stop offset="0%" stopColor="#6366f1" />
                                 <stop offset="100%" stopColor="#818cf8" />
                             </linearGradient>
-                            <filter id="glow">
-                                <feGaussianBlur stdDeviation="1.5" result="coloredBlur" />
-                                <feMerge>
-                                    <feMergeNode in="coloredBlur" />
-                                    <feMergeNode in="SourceGraphic" />
-                                </feMerge>
-                            </filter>
                         </defs>
-
-                        {/* Line */}
-                        {chartPath && (
+                        {chartData.length > 0 && (
                             <path
-                                d={chartPath}
+                                d={generatePath()}
                                 fill="none"
                                 stroke="url(#lineGradient)"
-                                strokeWidth="2.5"
+                                strokeWidth="2"
                                 strokeLinecap="round"
                                 strokeLinejoin="round"
-                                filter="url(#glow)"
+                                vectorEffect="non-scaling-stroke"
                             />
                         )}
-
-                        {/* Dots */}
-                        {chartDots.map((dot, i) => (
-                            <circle
-                                key={i}
-                                cx={dot.x}
-                                cy={dot.y}
-                                r="3"
-                                fill="#6366f1"
-                                stroke="#1a1a2e"
-                                strokeWidth="1.5"
-                            />
-                        ))}
+                        {chartData.map((d, i) => {
+                            const x = 5 + (i / (chartData.length - 1 || 1)) * 90;
+                            const y = 90 - (d.count / maxCount) * 80;
+                            return (
+                                <circle
+                                    key={i}
+                                    cx={x}
+                                    cy={y}
+                                    r="2"
+                                    fill="#6366f1"
+                                    stroke="#1a1a2e"
+                                    strokeWidth="1"
+                                    vectorEffect="non-scaling-stroke"
+                                />
+                            );
+                        })}
                     </svg>
-                    <div style={{
-                        fontSize: '9px',
-                        color: '#6b7280',
-                        textAlign: 'center',
-                        marginTop: '2px',
-                    }}>
-                        Last 7 Days
-                    </div>
+                    <div className="chart-label">Last 7 Days</div>
                 </div>
 
                 {/* Stats Grid */}
-                <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr',
-                    gap: '8px',
-                }}>
-                    {/* Yesterday */}
-                    <div style={{
-                        background: 'rgba(255, 255, 255, 0.03)',
-                        borderRadius: '8px',
-                        padding: '10px',
-                        border: '1px solid rgba(255, 255, 255, 0.05)',
-                    }}>
-                        <div style={{
-                            fontSize: '9px',
-                            fontWeight: 600,
-                            color: '#6b7280',
-                            letterSpacing: '0.5px',
-                            textTransform: 'uppercase',
-                            marginBottom: '4px',
-                        }}>
-                            Yesterday
-                        </div>
-                        <div style={{
-                            fontSize: '18px',
-                            fontWeight: 700,
-                            color: '#e5e7eb',
-                        }}>
-                            {formatNumber(data?.yesterdayVisitors || 0)}
-                        </div>
+                <div className="stats-grid">
+                    <div className="stat-card">
+                        <div className="stat-label">Yesterday</div>
+                        <div className="stat-value">{formatNumber(data?.yesterdayVisitors || 0)}</div>
                     </div>
-
-                    {/* This Month */}
-                    <div style={{
-                        background: 'rgba(255, 255, 255, 0.03)',
-                        borderRadius: '8px',
-                        padding: '10px',
-                        border: '1px solid rgba(255, 255, 255, 0.05)',
-                    }}>
-                        <div style={{
-                            fontSize: '9px',
-                            fontWeight: 600,
-                            color: '#6b7280',
-                            letterSpacing: '0.5px',
-                            textTransform: 'uppercase',
-                            marginBottom: '4px',
-                        }}>
-                            This Month
-                        </div>
-                        <div style={{
-                            fontSize: '18px',
-                            fontWeight: 700,
-                            color: '#e5e7eb',
-                        }}>
-                            {formatNumber(data?.thisMonthVisitors || 0)}
-                        </div>
+                    <div className="stat-card">
+                        <div className="stat-label">This Month</div>
+                        <div className="stat-value">{formatNumber(data?.thisMonthVisitors || 0)}</div>
                     </div>
                 </div>
             </div>
