@@ -1,16 +1,15 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import VisitorChart from '@/components/VisitorChart';
+import Link from 'next/link';
 import {
-  GlobeAltIcon,
-  UserGroupIcon,
-  EyeIcon,
-  ChartBarIcon,
-  ClockIcon,
-  PlusCircleIcon,
-  CalendarDaysIcon,
-} from '@heroicons/react/24/outline';
+  Globe, Users, Eye, BarChart3, Clock, Plus,
+} from 'lucide-react';
 
 interface Website {
   id: string;
@@ -33,24 +32,13 @@ export default function Dashboard() {
   const [websites, setWebsites] = useState<Website[]>([]);
   const [websiteStats, setWebsiteStats] = useState<Record<string, WebsiteStats>>({});
   const [allTimeStats, setAllTimeStats] = useState<{
-    summary: {
-      totalPageViews: number;
-      uniqueVisitors: number;
-      totalSessions: number;
-      averageDuration: number;
-      bounceRate: number;
-    };
-    timeSeries: Array<{
-      date: string;
-      pageViews: number;
-      uniqueVisitors: number;
-    }>;
+    summary: { totalPageViews: number; uniqueVisitors: number; totalSessions: number; averageDuration: number; bounceRate: number };
+    timeSeries: Array<{ date: string; pageViews: number; uniqueVisitors: number }>;
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [statsLoading, setStatsLoading] = useState(false);
   const [period, setPeriod] = useState('week');
 
-  // Fetch all-time stats — only depends on period
   const fetchAllTimeStats = useCallback(async (currentPeriod: string) => {
     try {
       setStatsLoading(true);
@@ -58,22 +46,19 @@ export default function Dashboard() {
       const data = await response.json();
       setAllTimeStats(data);
     } catch (error) {
-      console.error('Error fetching all-time stats:', error);
+      console.error('Error fetching stats:', error);
       setAllTimeStats(null);
     } finally {
       setStatsLoading(false);
     }
   }, []);
 
-  // Fetch websites — no dependency on fetchAllTimeStats
   const fetchWebsites = useCallback(async (currentPeriod: string) => {
     try {
       const response = await fetch('/api/websites');
       const data = await response.json();
-
       if (data.websites) {
         setWebsites(data.websites);
-
         if (data.websites.length > 0) {
           fetchStatsForWebsites(data.websites);
           fetchAllTimeStats(currentPeriod);
@@ -86,57 +71,37 @@ export default function Dashboard() {
     }
   }, [fetchAllTimeStats]);
 
-  // Initial load
   useEffect(() => {
     fetchWebsites(period);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // When period changes, only re-fetch stats (not websites)
   useEffect(() => {
-    if (!loading) {
-      fetchAllTimeStats(period);
-    }
+    if (!loading) fetchAllTimeStats(period);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period]);
 
-  const fetchStatsForWebsites = async (websites: Website[]) => {
-    const statsPromises = websites.map(async (website) => {
+  const fetchStatsForWebsites = async (sites: Website[]) => {
+    const results = await Promise.all(sites.map(async (site) => {
       try {
-        const [statsResponse, realtimeResponse] = await Promise.all([
-          fetch(`/api/stats?websiteId=${website.id}&period=today`),
-          fetch(`/api/realtime?websiteId=${website.id}`)
+        const [statsRes, realtimeRes] = await Promise.all([
+          fetch(`/api/stats?websiteId=${site.id}&period=today`),
+          fetch(`/api/realtime?websiteId=${site.id}`)
         ]);
-        
-        const data = await statsResponse.json();
-        const realtimeData = await realtimeResponse.json();
-        
+        const stats = await statsRes.json();
+        const realtime = await realtimeRes.json();
         return {
-          id: website.id,
-          todayVisitors: data.summary?.uniqueVisitors || 0,
-          realtimeVisitors: realtimeData.count || 0,
-          todayPageViews: data.summary?.totalPageViews || 0,
-          avgDuration: data.summary?.averageDuration || 0,
+          id: site.id,
+          todayVisitors: stats.summary?.uniqueVisitors || 0,
+          realtimeVisitors: realtime.count || 0,
+          todayPageViews: stats.summary?.totalPageViews || 0,
+          avgDuration: stats.summary?.averageDuration || 0,
         };
-      } catch (error) {
-        console.error(`Error fetching stats for ${website.id}:`, error);
-        return {
-          id: website.id,
-          todayVisitors: 0,
-          realtimeVisitors: 0,
-          todayPageViews: 0,
-          avgDuration: 0,
-        };
+      } catch {
+        return { id: site.id, todayVisitors: 0, realtimeVisitors: 0, todayPageViews: 0, avgDuration: 0 };
       }
-    });
-
-    const statsResults = await Promise.all(statsPromises);
-    const statsMap = statsResults.reduce((acc, stat) => {
-      acc[stat.id] = stat;
-      return acc;
-    }, {} as Record<string, WebsiteStats>);
-    
-    setWebsiteStats(statsMap);
+    }));
+    setWebsiteStats(Object.fromEntries(results.map(s => [s.id, s])));
   };
 
   const formatDuration = (seconds: number) => {
@@ -145,19 +110,10 @@ export default function Dashboard() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    });
-  };
-
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
       </div>
     );
   }
@@ -165,250 +121,188 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="bg-white shadow rounded-lg p-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-            <p className="mt-1 text-sm text-gray-500">
-              Monitor your website analytics and visitor statistics
-            </p>
-          </div>
-          <div className="mt-4 sm:mt-0">
-            <div className="relative">
-              <select
-                value={period}
-                onChange={(e) => setPeriod(e.target.value)}
-                className="appearance-none bg-white border border-gray-300 rounded-lg py-2 pl-4 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900"
-              >
-                <option value="today">Today</option>
-                <option value="yesterday">Yesterday</option>
-                <option value="week">Last 7 Days</option>
-                <option value="month">Last 30 Days</option>
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
-                <CalendarDaysIcon className="h-5 w-5" />
-              </div>
-            </div>
-          </div>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+          <p className="text-muted-foreground">Monitor your website analytics</p>
         </div>
+        <Select value={period} onValueChange={setPeriod}>
+          <SelectTrigger className="w-[160px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="today">Today</SelectItem>
+            <SelectItem value="yesterday">Yesterday</SelectItem>
+            <SelectItem value="week">Last 7 Days</SelectItem>
+            <SelectItem value="month">Last 30 Days</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
-      {websites.length > 0 && (
+      {websites.length > 0 ? (
         <>
-          {/* Overall Analytics Chart */}
-          <div className="bg-white shadow rounded-lg p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-lg font-medium text-gray-900">Overall Analytics</h2>
-              <div className="flex items-center space-x-2">
-                <span className="text-sm text-gray-500">All Websites</span>
-                <div className="flex items-center">
-                  <div className="w-3 h-3 bg-indigo-500 rounded-full mr-2"></div>
-                  <span className="text-sm text-gray-600">Total Visitors</span>
+          {/* Stats Cards */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="rounded-lg bg-blue-500/10 p-2.5">
+                    <Users className="h-5 w-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Total Visitors</p>
+                    <p className="text-2xl font-bold">{allTimeStats?.summary?.uniqueVisitors?.toLocaleString() || '0'}</p>
+                  </div>
                 </div>
-                <div className="flex items-center">
-                  <div className="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
-                  <span className="text-sm text-gray-600">Page Views</span>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="rounded-lg bg-green-500/10 p-2.5">
+                    <BarChart3 className="h-5 w-5 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Page Views</p>
+                    <p className="text-2xl font-bold">{allTimeStats?.summary?.totalPageViews?.toLocaleString() || '0'}</p>
+                  </div>
                 </div>
-              </div>
-            </div>
-            {statsLoading ? (
-              <div className="flex items-center justify-center h-64 bg-gray-50 rounded-lg">
-                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-500"></div>
-              </div>
-            ) : allTimeStats ? (
-              <VisitorChart data={allTimeStats.timeSeries || []} />
-            ) : (
-              <div className="flex items-center justify-center h-64 bg-gray-50 rounded-lg">
-                <p className="text-gray-500">No data available</p>
-              </div>
-            )}
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="rounded-lg bg-amber-500/10 p-2.5">
+                    <Clock className="h-5 w-5 text-amber-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Avg. Duration</p>
+                    <p className="text-2xl font-bold">{allTimeStats ? formatDuration(allTimeStats.summary?.averageDuration || 0) : '0:00'}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="rounded-lg bg-purple-500/10 p-2.5">
+                    <Globe className="h-5 w-5 text-purple-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Active Sites</p>
+                    <p className="text-2xl font-bold">{websites.filter(w => w.is_active).length}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
 
-          {/* Overall Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white shadow rounded-lg p-6">
-              <div className="flex items-center">
-                <div className="h-10 w-10 bg-indigo-100 rounded-full flex items-center justify-center">
-                  <UserGroupIcon className="h-6 w-6 text-indigo-600" />
+          {/* Chart */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Traffic Overview</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {statsLoading ? (
+                <div className="flex items-center justify-center h-64">
+                  <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
                 </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-500">Total Visitors</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {allTimeStats?.summary?.uniqueVisitors?.toLocaleString() || '0'}
-                  </p>
+              ) : allTimeStats?.timeSeries?.length ? (
+                <VisitorChart data={allTimeStats.timeSeries} />
+              ) : (
+                <div className="flex items-center justify-center h-64 text-muted-foreground">
+                  No data available for this period
                 </div>
-              </div>
-            </div>
-            <div className="bg-white shadow rounded-lg p-6">
-              <div className="flex items-center">
-                <div className="h-10 w-10 bg-green-100 rounded-full flex items-center justify-center">
-                  <ChartBarIcon className="h-6 w-6 text-green-600" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-500">Total Page Views</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {allTimeStats?.summary?.totalPageViews?.toLocaleString() || '0'}
-                  </p>
-                </div>
-              </div>
-            </div>
-            <div className="bg-white shadow rounded-lg p-6">
-              <div className="flex items-center">
-                <div className="h-10 w-10 bg-yellow-100 rounded-full flex items-center justify-center">
-                  <ClockIcon className="h-6 w-6 text-yellow-600" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-500">Avg. Duration</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {allTimeStats ? formatDuration(allTimeStats.summary?.averageDuration || 0) : '0:00'}
-                  </p>
-                </div>
-              </div>
-            </div>
-            <div className="bg-white shadow rounded-lg p-6">
-              <div className="flex items-center">
-                <div className="h-10 w-10 bg-purple-100 rounded-full flex items-center justify-center">
-                  <GlobeAltIcon className="h-6 w-6 text-purple-600" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-500">Active Websites</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {websites.filter(w => w.is_active).length}
-                  </p>
-                </div>
-              </div>
-            </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Websites Grid */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {websites.map((website) => {
+              const stats = websiteStats[website.id];
+              return (
+                <Card key={website.id} className="hover:shadow-md transition-shadow">
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="rounded-lg bg-primary/10 p-2">
+                          <Globe className="h-4 w-4 text-primary" />
+                        </div>
+                        <div>
+                          <h3 className="font-medium leading-none">{website.name}</h3>
+                          <p className="text-xs text-muted-foreground mt-1">{website.domain}</p>
+                        </div>
+                      </div>
+                      <Badge variant={website.is_active ? 'default' : 'secondary'} className="text-xs">
+                        {website.is_active ? 'Active' : 'Inactive'}
+                      </Badge>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1.5">
+                          <Eye className="h-3.5 w-3.5 text-green-500" />
+                          <span className="text-xs text-muted-foreground">Live</span>
+                        </div>
+                        <p className="text-lg font-semibold">{stats?.realtimeVisitors || 0}</p>
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1.5">
+                          <Users className="h-3.5 w-3.5 text-blue-500" />
+                          <span className="text-xs text-muted-foreground">Today</span>
+                        </div>
+                        <p className="text-lg font-semibold">{stats?.todayVisitors || 0}</p>
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1.5">
+                          <BarChart3 className="h-3.5 w-3.5 text-purple-500" />
+                          <span className="text-xs text-muted-foreground">Views</span>
+                        </div>
+                        <p className="text-lg font-semibold">{stats?.todayPageViews || 0}</p>
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1.5">
+                          <Clock className="h-3.5 w-3.5 text-amber-500" />
+                          <span className="text-xs text-muted-foreground">Duration</span>
+                        </div>
+                        <p className="text-lg font-semibold">{stats ? formatDuration(stats.avgDuration) : '0:00'}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 mt-4 pt-4 border-t">
+                      <Button variant="ghost" size="sm" asChild className="flex-1">
+                        <Link href={`/dashboard/analytics/website?id=${website.id}`}>Analytics</Link>
+                      </Button>
+                      <Button variant="ghost" size="sm" asChild className="flex-1">
+                        <Link href={`/dashboard/websites?id=${website.id}`}>Manage</Link>
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         </>
-      )}
-
-      {/* Websites Grid */}
-      {websites.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {websites.map((website) => {
-            const stats = websiteStats[website.id];
-            return (
-              <div key={website.id} className="bg-white shadow rounded-lg overflow-hidden hover:shadow-md transition-shadow">
-                <div className="p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center">
-                      <div className="h-10 w-10 bg-indigo-100 rounded-full flex items-center justify-center">
-                        <GlobeAltIcon className="h-6 w-6 text-indigo-600" />
-                      </div>
-                      <div className="ml-3">
-                        <h3 className="text-lg font-medium text-gray-900 truncate">
-                          {website.name}
-                        </h3>
-                        <p className="text-sm text-gray-500 truncate">
-                          {website.domain}
-                        </p>
-                      </div>
-                    </div>
-                    <div className={`h-3 w-3 rounded-full ${
-                      website.is_active ? 'bg-green-500' : 'bg-gray-400'
-                    }`}></div>
-                  </div>
-
-                  <div className="space-y-4">
-                    {/* Realtime Visitors */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center">
-                        <div className="h-8 w-8 bg-green-100 rounded-full flex items-center justify-center">
-                          <EyeIcon className="h-4 w-4 text-green-600" />
-                        </div>
-                        <span className="ml-2 text-sm text-gray-600">Live Visitors</span>
-                      </div>
-                      <span className="text-sm font-semibold text-gray-900">
-                        {stats?.realtimeVisitors || 0}
-                      </span>
-                    </div>
-
-                    {/* Today&apos;s Visitors */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center">
-                        <div className="h-8 w-8 bg-blue-100 rounded-full flex items-center justify-center">
-                          <UserGroupIcon className="h-4 w-4 text-blue-600" />
-                        </div>
-                        <span className="ml-2 text-sm text-gray-600">Today&apos;s Visitors</span>
-                      </div>
-                      <span className="text-sm font-semibold text-gray-900">
-                        {stats?.todayVisitors || 0}
-                      </span>
-                    </div>
-
-                    {/* Today's Page Views */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center">
-                        <div className="h-8 w-8 bg-purple-100 rounded-full flex items-center justify-center">
-                          <ChartBarIcon className="h-4 w-4 text-purple-600" />
-                        </div>
-                        <span className="ml-2 text-sm text-gray-600">Page Views</span>
-                      </div>
-                      <span className="text-sm font-semibold text-gray-900">
-                        {stats?.todayPageViews || 0}
-                      </span>
-                    </div>
-
-                    {/* Avg Duration */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center">
-                        <div className="h-8 w-8 bg-yellow-100 rounded-full flex items-center justify-center">
-                          <ClockIcon className="h-4 w-4 text-yellow-600" />
-                        </div>
-                        <span className="ml-2 text-sm text-gray-600">Avg. Duration</span>
-                      </div>
-                      <span className="text-sm font-semibold text-gray-900">
-                        {stats ? formatDuration(stats.avgDuration) : '0:00'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="mt-6 pt-4 border-t border-gray-200">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-gray-500">
-                        Added {formatDate(website.created_at)}
-                      </span>
-                      <div className="flex space-x-2">
-                        <a
-                          href={`/dashboard/analytics?id=${website.id}`}
-                          className="text-indigo-600 hover:text-indigo-800 text-xs font-medium"
-                        >
-                          Analytics
-                        </a>
-                        <span className="text-gray-300">|</span>
-                        <a
-                          href={`/dashboard/websites?id=${website.id}`}
-                          className="text-indigo-600 hover:text-indigo-800 text-xs font-medium"
-                        >
-                          Manage
-                        </a>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
       ) : (
-        <div className="bg-white shadow rounded-lg p-12 text-center">
-          <div className="mx-auto h-16 w-16 bg-gray-100 rounded-full flex items-center justify-center">
-            <GlobeAltIcon className="h-8 w-8 text-gray-400" />
-          </div>
-          <h3 className="mt-4 text-lg font-medium text-gray-900">No websites yet</h3>
-          <p className="mt-2 text-sm text-gray-500">
-            Get started by adding your first website to track visitor analytics.
-          </p>
-          <div className="mt-6">
-            <a
-              href="/dashboard/add-website"
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-            >
-              <PlusCircleIcon className="h-5 w-5 mr-2" />
-              Add Your First Website
-            </a>
-          </div>
-        </div>
+        /* Empty state */
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16">
+            <div className="rounded-full bg-muted p-4 mb-4">
+              <Globe className="h-8 w-8 text-muted-foreground" />
+            </div>
+            <h3 className="text-lg font-medium mb-2">No websites yet</h3>
+            <p className="text-sm text-muted-foreground mb-6 text-center max-w-sm">
+              Get started by adding your first website to track visitor analytics.
+            </p>
+            <Button asChild>
+              <Link href="/dashboard/add-website">
+                <Plus className="h-4 w-4" />
+                Add Website
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

@@ -1,324 +1,100 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'next/navigation';
-import StatsCard from '@/components/StatsCard';
+import { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import VisitorChart from '@/components/VisitorChart';
-import {
-  GlobeAltIcon,
-  ChartBarIcon,
-  ClockIcon,
-  UserGroupIcon,
-  CheckCircleIcon,
-} from '@heroicons/react/24/outline';
+import { BarChart3, Users, Clock, Loader2 } from 'lucide-react';
 
-interface Website {
-  id: string;
-  name: string;
-  domain: string;
-  tracking_id: string;
-  is_active: boolean;
-}
-
-interface MonthlyStats {
-  month: number;
-  monthName: string;
-  pageViews: number;
-  uniqueVisitors: number;
-  totalSessions: number;
-  averageDuration: number;
-  bounceRate: number;
-}
-
-interface Stats {
-  summary: {
-    totalPageViews: number;
-    uniqueVisitors: number;
-    totalSessions: number;
-    averageDuration: number;
-    bounceRate: number;
-  };
-  monthlyData: MonthlyStats[];
-  topPages: Array<{
-    url: string;
-    title: string;
-    count: number;
-  }>;
-  deviceStats: {
-    devices: Record<string, number>;
-    browsers: Record<string, number>;
-    os: Record<string, number>;
-  };
-  referrerStats: Record<string, number>;
-}
+interface Website { id: string; name: string; domain: string; }
 
 export default function MonthlyAnalyticsPage() {
-  const [selectedWebsite, setSelectedWebsite] = useState<Website | null>(null);
   const [websites, setWebsites] = useState<Website[]>([]);
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
-  const searchParams = useSearchParams();
+  const [selectedWebsite, setSelectedWebsite] = useState('');
+  const [year, setYear] = useState(new Date().getFullYear().toString());
+  const [data, setData] = useState<{ months: Array<{ month: number; pageViews: number; uniqueVisitors: number; avgDuration: number }>} | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const fetchWebsites = useCallback(async () => {
-    try {
-      const response = await fetch('/api/websites');
-      const data = await response.json();
+  const years = Array.from({ length: 5 }, (_, i) => (new Date().getFullYear() - i).toString());
 
-      if (data.websites) {
-        setWebsites(data.websites);
-      }
-    } catch (error) {
-      console.error('Error fetching websites:', error);
-    }
+  useEffect(() => {
+    fetch('/api/websites').then(r => r.json()).then(d => {
+      if (d.websites?.length) { setWebsites(d.websites); setSelectedWebsite(d.websites[0].id); }
+      setLoading(false);
+    }).catch(() => setLoading(false));
   }, []);
 
-  const fetchWebsite = useCallback(async (id: string) => {
-    try {
-      const response = await fetch('/api/websites');
-      const data = await response.json();
-
-      if (data.websites) {
-        const website = data.websites.find((w: { id: string }) => w.id === id);
-        if (website) {
-          setSelectedWebsite(website);
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching website:', error);
-    }
-  }, []);
-
-  const fetchStats = useCallback(async () => {
+  useEffect(() => {
     if (!selectedWebsite) return;
+    fetch(`/api/stats/monthly?websiteId=${selectedWebsite}&year=${year}`)
+      .then(r => r.json()).then(setData).catch(() => setData(null));
+  }, [selectedWebsite, year]);
 
-    try {
-      const response = await fetch(`/api/stats/monthly?websiteId=${selectedWebsite.id}&year=${selectedYear}`);
-      const data = await response.json();
-      setStats(data);
-    } catch (error) {
-      console.error('Error fetching stats:', error);
-    }
-  }, [selectedWebsite, selectedYear]);
-
-  useEffect(() => {
-    const websiteId = searchParams.get('id');
-    if (websiteId) {
-      fetchWebsite(websiteId);
-    }
-    fetchWebsites();
-  }, [searchParams, fetchWebsite, fetchWebsites]);
-
-  useEffect(() => {
-    if (selectedWebsite) {
-      fetchStats();
-    }
-  }, [selectedWebsite, selectedYear, fetchStats]);
-
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  // Get available years (current year - 5 years back)
-  const currentYear = new Date().getFullYear();
-  const availableYears = Array.from({ length: 6 }, (_, i) => currentYear - i);
-
-  // Convert monthly data to chart format
-  const chartData = stats?.monthlyData.map((month) => ({
-    date: month.monthName,
-    pageViews: month.pageViews,
-    uniqueVisitors: month.uniqueVisitors,
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const chartData = data?.months?.map(m => ({
+    date: `${year}-${String(m.month).padStart(2, '0')}`,
+    pageViews: m.pageViews,
+    uniqueVisitors: m.uniqueVisitors,
   })) || [];
+
+  const totals = data?.months?.reduce((acc, m) => ({
+    views: acc.views + m.pageViews,
+    visitors: acc.visitors + m.uniqueVisitors,
+    duration: acc.duration + m.avgDuration,
+  }), { views: 0, visitors: 0, duration: 0 });
+
+  if (loading) return <div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="bg-white shadow rounded-lg p-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Monthly Analytics</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Monthly visitor insights for your websites
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight">Monthly Analytics</h1>
+          <p className="text-muted-foreground">Month-by-month performance overview</p>
+        </div>
+        <div className="flex gap-2">
+          <Select value={selectedWebsite} onValueChange={setSelectedWebsite}>
+            <SelectTrigger className="w-[180px]"><SelectValue placeholder="Website" /></SelectTrigger>
+            <SelectContent>{websites.map(w => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}</SelectContent>
+          </Select>
+          <Select value={year} onValueChange={setYear}>
+            <SelectTrigger className="w-[100px]"><SelectValue /></SelectTrigger>
+            <SelectContent>{years.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}</SelectContent>
+          </Select>
         </div>
       </div>
 
-      {/* Website Selector */}
-      <div className="px-6">
-        {websites.length > 0 ? (
-          <div className="flex flex-wrap gap-3 items-center">
-            <span className="text-sm font-medium text-gray-700">Website:</span>
-            {websites.map((website) => (
-              <button
-                key={website.id}
-                onClick={() => setSelectedWebsite(website)}
-                className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 ${
-                  selectedWebsite?.id === website.id
-                    ? 'bg-indigo-100 text-indigo-700 border-2 border-indigo-200'
-                    : 'bg-gray-100 text-gray-700 border-2 border-transparent hover:bg-gray-200'
-                }`}
-              >
-                <div className={`h-2 w-2 rounded-full mr-2 ${
-                  website.is_active ? 'bg-green-500' : 'bg-gray-400'
-                }`}></div>
-                {website.name}
-                {selectedWebsite?.id === website.id && (
-                  <CheckCircleIcon className="h-4 w-4 ml-2 text-indigo-500" />
-                )}
-              </button>
-            ))}
-            <a
-              href="/dashboard/add-website"
-              className="inline-flex items-center px-4 py-2 rounded-full text-sm font-medium border-2 border-dashed border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-700 transition-all duration-200"
-            >
-              <svg className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Add
-            </a>
-          </div>
-        ) : (
-          <div className="text-center py-8">
-            <GlobeAltIcon className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">No websites yet</h3>
-            <p className="mt-1 text-sm text-gray-500">
-              Add your first website to start tracking analytics.
-            </p>
-            <div className="mt-4">
-              <a
-                href="/dashboard/add-website"
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
-              >
-                <svg className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Add Website
-              </a>
-            </div>
-          </div>
-        )}
-      </div>
+      {totals && (
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Card><CardContent className="p-4 flex items-center gap-3"><div className="rounded-lg bg-blue-500/10 p-2"><Users className="h-4 w-4 text-blue-600" /></div><div><p className="text-xs text-muted-foreground">Total Visitors</p><p className="text-xl font-bold">{totals.visitors.toLocaleString()}</p></div></CardContent></Card>
+          <Card><CardContent className="p-4 flex items-center gap-3"><div className="rounded-lg bg-purple-500/10 p-2"><BarChart3 className="h-4 w-4 text-purple-600" /></div><div><p className="text-xs text-muted-foreground">Total Page Views</p><p className="text-xl font-bold">{totals.views.toLocaleString()}</p></div></CardContent></Card>
+          <Card><CardContent className="p-4 flex items-center gap-3"><div className="rounded-lg bg-amber-500/10 p-2"><Clock className="h-4 w-4 text-amber-600" /></div><div><p className="text-xs text-muted-foreground">Avg Duration</p><p className="text-xl font-bold">{Math.floor((totals.duration / (data?.months?.length || 1)) / 60)}:{((totals.duration / (data?.months?.length || 1)) % 60).toFixed(0).padStart(2, '0')}</p></div></CardContent></Card>
+        </div>
+      )}
 
-      {/* Main Content */}
-      {selectedWebsite ? (
-        <>
-          {/* Header with Year Selector */}
-          <div className="bg-white shadow rounded-lg p-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-              <div className="mb-4 sm:mb-0">
-                <h2 className="text-xl font-bold text-gray-900">
-                  {selectedWebsite.name || 'Selected Website'}
-                </h2>
-                <p className="mt-1 text-sm text-gray-500">
-                  {selectedWebsite.domain || 'Website domain'}
-                </p>
-              </div>
-              <div className="flex items-center space-x-2">
-                <label className="text-sm font-medium text-gray-700">Year:</label>
-                <select
-                  value={selectedYear}
-                  onChange={(e) => setSelectedYear(e.target.value)}
-                  className="appearance-none bg-white border border-gray-300 rounded-lg py-2 pl-4 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900"
-                >
-                  {availableYears.map((year) => (
-                    <option key={year} value={year.toString()}>
-                      {year}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
+      <Card><CardHeader><CardTitle>Monthly Trend — {year}</CardTitle></CardHeader><CardContent>{chartData.length > 0 ? <VisitorChart data={chartData} /> : <p className="text-center text-muted-foreground py-12">No data for {year}</p>}</CardContent></Card>
 
-          {/* Stats Cards - Current Year Summary */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatsCard
-              title="Total Page Views"
-              value={stats?.summary.totalPageViews.toLocaleString() || '0'}
-              icon={<ChartBarIcon className="h-6 w-6 text-indigo-500" />}
-            />
-            <StatsCard
-              title="Total Visitors"
-              value={stats?.summary.uniqueVisitors.toLocaleString() || '0'}
-              icon={<UserGroupIcon className="h-6 w-6 text-green-500" />}
-            />
-            <StatsCard
-              title="Avg. Duration"
-              value={stats ? formatDuration(stats.summary.averageDuration) : '0:00'}
-              icon={<ClockIcon className="h-6 w-6 text-yellow-500" />}
-            />
-            <StatsCard
-              title="Bounce Rate"
-              value={`${stats?.summary.bounceRate || 0}%`}
-              icon={<GlobeAltIcon className="h-6 w-6 text-red-500" />}
-            />
-          </div>
-
-          {/* Monthly Chart */}
-          <div className="bg-white shadow rounded-lg p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-medium text-gray-900">Monthly Trends</h3>
-              <div className="flex items-center space-x-2">
-                <div className="flex items-center">
-                  <div className="w-3 h-3 bg-indigo-500 rounded-full mr-2"></div>
-                  <span className="text-sm text-gray-600">Page Views</span>
-                </div>
-                <div className="flex items-center">
-                  <div className="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
-                  <span className="text-sm text-gray-600">Unique Visitors</span>
-                </div>
-              </div>
-            </div>
-            {stats && chartData.length > 0 ? (
-              <VisitorChart data={chartData} />
-            ) : (
-              <div className="flex items-center justify-center h-64 bg-gray-50 rounded-lg">
-                <p className="text-gray-500">No data available for this year</p>
-              </div>
-            )}
-          </div>
-
-          {/* Monthly Breakdown Table */}
-          <div className="bg-white shadow rounded-lg p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-6">Monthly Breakdown</h3>
+      {data?.months && data.months.length > 0 && (
+        <Card>
+          <CardHeader><CardTitle className="text-base">Monthly Breakdown</CardTitle></CardHeader>
+          <CardContent>
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Month</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Page Views</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unique Visitors</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sessions</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Avg Duration</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bounce Rate</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {stats?.monthlyData.map((month) => (
-                    <tr key={month.month} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{month.monthName}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{month.pageViews.toLocaleString()}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{month.uniqueVisitors.toLocaleString()}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{month.totalSessions.toLocaleString()}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{formatDuration(month.averageDuration)}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{month.bounceRate}%</td>
+              <table className="w-full text-sm">
+                <thead><tr className="border-b"><th className="text-left py-2 font-medium">Month</th><th className="text-right py-2 font-medium">Visitors</th><th className="text-right py-2 font-medium">Page Views</th><th className="text-right py-2 font-medium">Avg Duration</th></tr></thead>
+                <tbody>
+                  {data.months.map(m => (
+                    <tr key={m.month} className="border-b last:border-0">
+                      <td className="py-2">{monthNames[m.month - 1]}</td>
+                      <td className="text-right py-2 text-muted-foreground">{m.uniqueVisitors.toLocaleString()}</td>
+                      <td className="text-right py-2 text-muted-foreground">{m.pageViews.toLocaleString()}</td>
+                      <td className="text-right py-2 text-muted-foreground">{Math.floor(m.avgDuration / 60)}:{(m.avgDuration % 60).toString().padStart(2, '0')}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          </div>
-        </>
-      ) : (
-        <div className="bg-white shadow rounded-lg p-12 text-center">
-          <div className="mx-auto h-16 w-16 bg-gray-100 rounded-full flex items-center justify-center">
-            <ChartBarIcon className="h-8 w-8 text-gray-400" />
-          </div>
-          <h3 className="mt-4 text-lg font-medium text-gray-900">No website selected</h3>
-          <p className="mt-2 text-sm text-gray-500">
-            Select a website from the dropdown above to view monthly analytics.
-          </p>
-        </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

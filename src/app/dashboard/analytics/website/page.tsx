@@ -2,568 +2,168 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
-import StatsCard from '@/components/StatsCard';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
 import VisitorChart from '@/components/VisitorChart';
-import {
-  GlobeAltIcon,
-  ChartBarIcon,
-  ClockIcon,
-  UserGroupIcon,
-  CalendarDaysIcon,
-  DevicePhoneMobileIcon,
-  ComputerDesktopIcon,
-  Square3Stack3DIcon,
-  CheckCircleIcon,
-  XMarkIcon,
-} from '@heroicons/react/24/outline';
+import { Globe, Users, BarChart3, Clock, Eye, Monitor, Smartphone, Tablet, Loader2 } from 'lucide-react';
 
-interface Website {
-  id: string;
-  name: string;
-  domain: string;
-  tracking_id: string;
-  is_active: boolean;
-}
-
+interface Website { id: string; name: string; domain: string; tracking_id: string; is_active: boolean; }
 interface Stats {
-  summary: {
-    totalPageViews: number;
-    uniqueVisitors: number;
-    totalSessions: number;
-    averageDuration: number;
-    bounceRate: number;
-  };
-  timeSeries: Array<{
-    date: string;
-    pageViews: number;
-    uniqueVisitors: number;
-  }>;
-  topPages: Array<{
-    url: string;
-    title: string;
-    count: number;
-  }>;
-  deviceStats: {
-    devices: Record<string, number>;
-    browsers: Record<string, number>;
-    os: Record<string, number>;
-  };
+  summary: { totalPageViews: number; uniqueVisitors: number; totalSessions: number; averageDuration: number; bounceRate: number };
+  timeSeries: Array<{ date: string; pageViews: number; uniqueVisitors: number }>;
+  topPages: Array<{ url: string; title: string; count: number }>;
+  deviceStats: { devices: Record<string, number>; browsers: Record<string, number>; os: Record<string, number> };
   referrerStats: Record<string, number>;
 }
 
 export default function WebsiteAnalyticsPage() {
-  const [selectedWebsite, setSelectedWebsite] = useState<Website | null>(null);
   const [websites, setWebsites] = useState<Website[]>([]);
+  const [selectedWebsite, setSelectedWebsite] = useState<Website | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
   const [period, setPeriod] = useState('today');
   const [realtimeVisitors, setRealtimeVisitors] = useState(0);
-  const [showCustomDateFilter, setShowCustomDateFilter] = useState(false);
-  const [customStartDate, setCustomStartDate] = useState('');
-  const [customEndDate, setCustomEndDate] = useState('');
-
+  const [loading, setLoading] = useState(true);
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
+  const [showCustom, setShowCustom] = useState(false);
   const searchParams = useSearchParams();
 
   const fetchWebsites = useCallback(async () => {
     try {
-      const response = await fetch('/api/websites');
-      const data = await response.json();
-
+      const res = await fetch('/api/websites');
+      const data = await res.json();
       if (data.websites) {
         setWebsites(data.websites);
-      }
-    } catch (error) {
-      console.error('Error fetching websites:', error);
-    }
-  }, []);
-
-  const fetchWebsite = useCallback(async (id: string) => {
-    try {
-      const response = await fetch('/api/websites');
-      const data = await response.json();
-
-      if (data.websites) {
-        const website = data.websites.find((w: { id: string }) => w.id === id);
-        if (website) {
-          setSelectedWebsite(website);
+        const id = searchParams.get('id');
+        if (id) {
+          const site = data.websites.find((w: Website) => w.id === id);
+          if (site) setSelectedWebsite(site);
+        } else if (data.websites.length > 0) {
+          setSelectedWebsite(data.websites[0]);
         }
       }
-    } catch (error) {
-      console.error('Error fetching website:', error);
-    }
-  }, []);
+    } catch { /* ignore */ } finally { setLoading(false); }
+  }, [searchParams]);
 
   const fetchStats = useCallback(async () => {
     if (!selectedWebsite) return;
-
     try {
-      const response = await fetch(`/api/stats?websiteId=${selectedWebsite.id}&period=${period}`);
-      const data = await response.json();
-      setStats(data);
-    } catch (error) {
-      console.error('Error fetching stats:', error);
-    }
-  }, [selectedWebsite, period]);
+      const p = showCustom && customStart && customEnd ? `custom:${customStart}:${customEnd}` : period;
+      const [statsRes, realtimeRes] = await Promise.all([
+        fetch(`/api/stats?websiteId=${selectedWebsite.id}&period=${p}`),
+        fetch(`/api/realtime?websiteId=${selectedWebsite.id}`),
+      ]);
+      const statsData = await statsRes.json();
+      const realtimeData = await realtimeRes.json();
+      setStats(statsData);
+      setRealtimeVisitors(realtimeData.count || 0);
+    } catch { /* ignore */ }
+  }, [selectedWebsite, period, showCustom, customStart, customEnd]);
 
-  const fetchRealtimeVisitors = useCallback(async () => {
-    if (!selectedWebsite) return;
+  useEffect(() => { fetchWebsites(); }, [fetchWebsites]);
+  useEffect(() => { fetchStats(); }, [fetchStats]);
 
-    try {
-      const response = await fetch(`/api/realtime?websiteId=${selectedWebsite.id}`);
-      const data = await response.json();
-      setRealtimeVisitors(data.count || 0);
-    } catch (error) {
-      console.error('Error fetching realtime visitors:', error);
-      setRealtimeVisitors(0);
-    }
-  }, [selectedWebsite]);
-
-  const setupRealtimeSubscription = useCallback(() => {
-    if (!selectedWebsite) return;
-
-    // Initial fetch
-    fetchRealtimeVisitors();
-
-    // Set up interval to update every 30 seconds
-    const interval = setInterval(fetchRealtimeVisitors, 30000);
-
-    return () => {
-      clearInterval(interval);
-      console.log('Real-time subscription cleanup');
-    };
-  }, [selectedWebsite, fetchRealtimeVisitors]);
-
-  useEffect(() => {
-    const websiteId = searchParams.get('id');
-    if (websiteId) {
-      fetchWebsite(websiteId);
-    }
-    fetchWebsites();
-  }, [searchParams, fetchWebsite, fetchWebsites]);
-
-  useEffect(() => {
-    if (selectedWebsite) {
-      fetchStats();
-      setupRealtimeSubscription();
-    }
-  }, [selectedWebsite, period, fetchStats, setupRealtimeSubscription]);
-
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  const formatDuration = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
+  const getDeviceIcon = (type: string) => {
+    if (type === 'mobile') return <Smartphone className="h-4 w-4" />;
+    if (type === 'tablet') return <Tablet className="h-4 w-4" />;
+    return <Monitor className="h-4 w-4" />;
   };
 
-  const getDeviceIcon = (device: string) => {
-    switch (device) {
-      case 'desktop':
-        return <ComputerDesktopIcon className="h-4 w-4 text-blue-600" />;
-      case 'mobile':
-        return <DevicePhoneMobileIcon className="h-4 w-4 text-green-600" />;
-      case 'tablet':
-        return <Square3Stack3DIcon className="h-4 w-4 text-purple-600" />;
-      default:
-        return <ComputerDesktopIcon className="h-4 w-4 text-gray-600" />;
-    }
-  };
-
-  const handlePeriodChange = (newPeriod: string) => {
-    if (newPeriod === 'custom') {
-      setShowCustomDateFilter(true);
-    } else {
-      setShowCustomDateFilter(false);
-      setPeriod(newPeriod);
-    }
-  };
-
-  const applyCustomDateFilter = () => {
-    if (customStartDate && customEndDate) {
-      // Convert to YYYY-MM-DD format for API
-      const startDate = new Date(customStartDate).toISOString().split('T')[0];
-      const endDate = new Date(customEndDate).toISOString().split('T')[0];
-
-      // Set a custom period identifier
-      setPeriod(`custom:${startDate}:${endDate}`);
-      setShowCustomDateFilter(false);
-    }
-  };
-
-  const clearCustomDateFilter = () => {
-    setCustomStartDate('');
-    setCustomEndDate('');
-    setShowCustomDateFilter(false);
-    setPeriod('today');
-  };
-
-  const getPeriodDisplayText = () => {
-    if (period.startsWith('custom:')) {
-      const [, startDate, endDate] = period.split(':');
-      return `${startDate} - ${endDate}`;
-    }
-    return period.charAt(0).toUpperCase() + period.slice(1);
-  };
+  if (loading) return <div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="bg-white shadow rounded-lg p-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Website Analytics</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Detailed analytics and visitor insights for your websites
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight">Website Analytics</h1>
+          <p className="text-muted-foreground">Detailed analytics per website</p>
+        </div>
+        <div className="flex gap-2">
+          <Select value={selectedWebsite?.id || ''} onValueChange={(v) => setSelectedWebsite(websites.find(w => w.id === v) || null)}>
+            <SelectTrigger className="w-[200px]"><SelectValue placeholder="Select website" /></SelectTrigger>
+            <SelectContent>
+              {websites.map(w => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={period} onValueChange={(v) => { setPeriod(v); setShowCustom(v === 'custom'); }}>
+            <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="today">Today</SelectItem>
+              <SelectItem value="yesterday">Yesterday</SelectItem>
+              <SelectItem value="week">Last 7 Days</SelectItem>
+              <SelectItem value="month">Last 30 Days</SelectItem>
+              <SelectItem value="custom">Custom</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
-      {/* Website Selector */}
-      <div className="px-6">
-        {websites.length > 0 ? (
-          <div className="flex flex-wrap gap-3 items-center">
-            <span className="text-sm font-medium text-gray-700">Website:</span>
-            {websites.map((website) => (
-              <button
-                key={website.id}
-                onClick={() => setSelectedWebsite(website)}
-                className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 ${
-                  selectedWebsite?.id === website.id
-                    ? 'bg-indigo-100 text-indigo-700 border-2 border-indigo-200'
-                    : 'bg-gray-100 text-gray-700 border-2 border-transparent hover:bg-gray-200'
-                }`}
-              >
-                <div className={`h-2 w-2 rounded-full mr-2 ${
-                  website.is_active ? 'bg-green-500' : 'bg-gray-400'
-                }`}></div>
-                {website.name}
-                {selectedWebsite?.id === website.id && (
-                  <CheckCircleIcon className="h-4 w-4 ml-2 text-indigo-500" />
-                )}
-              </button>
-            ))}
-            <a
-              href="/dashboard/add-website"
-              className="inline-flex items-center px-4 py-2 rounded-full text-sm font-medium border-2 border-dashed border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-700 transition-all duration-200"
-            >
-              <svg className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Add
-            </a>
-          </div>
-        ) : (
-          <div className="text-center py-8">
-            <GlobeAltIcon className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">No websites yet</h3>
-            <p className="mt-1 text-sm text-gray-500">
-              Add your first website to start tracking analytics.
-            </p>
-            <div className="mt-4">
-              <a
-                href="/dashboard/add-website"
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
-              >
-                <svg className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Add Website
-              </a>
-            </div>
-          </div>
-        )}
-      </div>
+      {showCustom && (
+        <Card>
+          <CardContent className="flex gap-4 items-end p-4">
+            <div className="space-y-1"><Label>Start</Label><Input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)} /></div>
+            <div className="space-y-1"><Label>End</Label><Input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} /></div>
+            <Button size="sm" onClick={fetchStats}>Apply</Button>
+          </CardContent>
+        </Card>
+      )}
 
-      {/* Main Content - Full Width */}
-      {selectedWebsite ? (
+      {selectedWebsite && stats ? (
         <>
-          {/* Website Header with Active Visitors and Date Filter */}
-          <div className="bg-white shadow rounded-lg p-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-              <div className="mb-4 sm:mb-0">
-                <h2 className="text-xl font-bold text-gray-900">
-                  {selectedWebsite.name || 'Selected Website'}
-                </h2>
-                <p className="mt-1 text-sm text-gray-500">
-                  {selectedWebsite.domain || 'Website domain'}
-                </p>
-              </div>
-              <div className="flex flex-col sm:flex-row sm:items-center space-y-3 sm:space-y-0 sm:space-x-3">
-                <div className="flex items-center space-x-2 bg-green-100 px-3 py-1 rounded-full">
-                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                  <span className="text-sm font-medium text-green-800">
-                    {realtimeVisitors} active visitors
-                  </span>
-                </div>
-                <div className="relative">
-                  {showCustomDateFilter ? (
-                    <div className="flex items-center space-x-2 bg-white border border-gray-300 rounded-lg p-2 shadow-lg">
-                      <input
-                        type="date"
-                        value={customStartDate}
-                        onChange={(e) => setCustomStartDate(e.target.value)}
-                        className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                        placeholder="Start date"
-                      />
-                      <span className="text-gray-500">to</span>
-                      <input
-                        type="date"
-                        value={customEndDate}
-                        onChange={(e) => setCustomEndDate(e.target.value)}
-                        className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                        placeholder="End date"
-                      />
-                      <button
-                        onClick={applyCustomDateFilter}
-                        className="bg-indigo-600 text-white px-3 py-1 rounded text-sm hover:bg-indigo-700"
-                      >
-                        Apply
-                      </button>
-                      <button
-                        onClick={clearCustomDateFilter}
-                        className="text-gray-500 hover:text-gray-700"
-                      >
-                        <XMarkIcon className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center space-x-2">
-                      <select
-                        value={period}
-                        onChange={(e) => handlePeriodChange(e.target.value)}
-                        className="appearance-none bg-white border border-gray-300 rounded-lg py-2 pl-4 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900"
-                      >
-                        <option value="today">Today</option>
-                        <option value="yesterday">Yesterday</option>
-                        <option value="week">Last 7 Days</option>
-                        <option value="month">Last 30 Days</option>
-                        <option value="custom">Custom Range</option>
-                      </select>
-                      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
-                        <CalendarDaysIcon className="h-5 w-5" />
-                      </div>
-
-                      {period.startsWith('custom:') && (
-                        <div className="flex items-center space-x-1 bg-gray-100 px-2 py-1 rounded text-xs text-gray-600">
-                          <CalendarDaysIcon className="h-3 w-3" />
-                          <span>{getPeriodDisplayText()}</span>
-                          <button
-                            onClick={() => setPeriod('today')}
-                            className="text-gray-500 hover:text-gray-700"
-                          >
-                            <XMarkIcon className="h-3 w-3" />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <a
-                  href={`/dashboard/websites?id=${selectedWebsite.id}`}
-                  className="text-indigo-600 hover:text-indigo-800 text-sm font-medium whitespace-nowrap"
-                >
-                  Manage →
-                </a>
-              </div>
-            </div>
-          </div>
-
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatsCard
-              title="Page Views"
-              value={stats?.summary.totalPageViews.toLocaleString() || '0'}
-              icon={<ChartBarIcon className="h-6 w-6 text-indigo-500" />}
-              change={12}
-              changeType="percentage"
-            />
-            <StatsCard
-              title="Unique Visitors"
-              value={stats?.summary.uniqueVisitors.toLocaleString() || '0'}
-              icon={<UserGroupIcon className="h-6 w-6 text-green-500" />}
-              change={8}
-              changeType="percentage"
-            />
-            <StatsCard
-              title="Avg. Duration"
-              value={stats ? formatDuration(stats.summary.averageDuration) : '0:00'}
-              icon={<ClockIcon className="h-6 w-6 text-yellow-500" />}
-              change={-5}
-              changeType="seconds"
-            />
-            <StatsCard
-              title="Bounce Rate"
-              value={`${stats?.summary.bounceRate || 0}%`}
-              icon={<GlobeAltIcon className="h-6 w-6 text-red-500" />}
-              change={-3}
-              changeType="percentage"
-            />
+          {/* Summary Cards */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            <Card><CardContent className="p-4 flex items-center gap-3"><div className="rounded-lg bg-green-500/10 p-2"><Eye className="h-4 w-4 text-green-600" /></div><div><p className="text-xs text-muted-foreground">Realtime</p><p className="text-xl font-bold">{realtimeVisitors}</p></div></CardContent></Card>
+            <Card><CardContent className="p-4 flex items-center gap-3"><div className="rounded-lg bg-blue-500/10 p-2"><Users className="h-4 w-4 text-blue-600" /></div><div><p className="text-xs text-muted-foreground">Visitors</p><p className="text-xl font-bold">{stats.summary.uniqueVisitors.toLocaleString()}</p></div></CardContent></Card>
+            <Card><CardContent className="p-4 flex items-center gap-3"><div className="rounded-lg bg-purple-500/10 p-2"><BarChart3 className="h-4 w-4 text-purple-600" /></div><div><p className="text-xs text-muted-foreground">Page Views</p><p className="text-xl font-bold">{stats.summary.totalPageViews.toLocaleString()}</p></div></CardContent></Card>
+            <Card><CardContent className="p-4 flex items-center gap-3"><div className="rounded-lg bg-amber-500/10 p-2"><Clock className="h-4 w-4 text-amber-600" /></div><div><p className="text-xs text-muted-foreground">Avg Duration</p><p className="text-xl font-bold">{formatDuration(stats.summary.averageDuration)}</p></div></CardContent></Card>
+            <Card><CardContent className="p-4 flex items-center gap-3"><div className="rounded-lg bg-red-500/10 p-2"><Globe className="h-4 w-4 text-red-600" /></div><div><p className="text-xs text-muted-foreground">Bounce Rate</p><p className="text-xl font-bold">{stats.summary.bounceRate}%</p></div></CardContent></Card>
           </div>
 
           {/* Chart */}
-          <div className="bg-white shadow rounded-lg p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-medium text-gray-900">Visitor Trends</h3>
-              <div className="flex items-center space-x-2">
-                <span className="text-sm text-gray-500">Last 24 hours</span>
-                <div className="flex items-center">
-                  <div className="w-3 h-3 bg-indigo-500 rounded-full mr-2"></div>
-                  <span className="text-sm text-gray-600">Page Views</span>
-                </div>
-                <div className="flex items-center">
-                  <div className="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
-                  <span className="text-sm text-gray-600">Unique Visitors</span>
-                </div>
-              </div>
-            </div>
-            {stats ? (
-              <VisitorChart data={stats.timeSeries} />
-            ) : (
-              <div className="flex items-center justify-center h-64 bg-gray-50 rounded-lg">
-                <p className="text-gray-500">No data available</p>
-              </div>
-            )}
-          </div>
+          <Card><CardHeader><CardTitle>Visitors Over Time</CardTitle></CardHeader><CardContent>{stats.timeSeries.length > 0 ? <VisitorChart data={stats.timeSeries} /> : <p className="text-center text-muted-foreground py-12">No data</p>}</CardContent></Card>
 
-          {/* Detailed Analytics Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid gap-4 lg:grid-cols-2">
             {/* Top Pages */}
-            <div className="bg-white shadow rounded-lg p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-medium text-gray-900">Top Pages</h3>
-                <button className="text-sm text-indigo-600 hover:text-indigo-800 font-medium">
-                  View All
-                </button>
-              </div>
-              <div className="space-y-4">
-                {stats?.topPages.slice(0, 10).map((page, index) => (
-                  <div key={index} className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="flex-shrink-0 w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center">
-                        <span className="text-xs font-medium text-indigo-600">{index + 1}</span>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-gray-900 truncate max-w-xs">
-                          {page.title}
-                        </p>
-                        <p className="text-xs text-gray-500 truncate max-w-xs">
-                          {page.url}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-medium text-gray-900">{page.count}</p>
-                      <p className="text-xs text-gray-500">views</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <Card><CardHeader><CardTitle className="text-base">Top Pages</CardTitle></CardHeader><CardContent><div className="space-y-2">{stats.topPages.map((p, i) => (
+              <div key={i} className="flex items-center justify-between text-sm"><span className="truncate flex-1 text-muted-foreground">{p.title || p.url}</span><Badge variant="secondary">{p.count}</Badge></div>
+            ))}{stats.topPages.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">No data</p>}</div></CardContent></Card>
 
-            {/* Device Breakdown */}
-            <div className="bg-white shadow rounded-lg p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-medium text-gray-900">Device Breakdown</h3>
-                <button className="text-sm text-indigo-600 hover:text-indigo-800 font-medium">
-                  View All
-                </button>
-              </div>
-              <div className="space-y-4">
-                {stats?.deviceStats.devices && Object.entries(stats.deviceStats.devices).map(([device, count]) => (
-                  <div key={device} className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className={`h-8 w-8 rounded-full flex items-center justify-center ${
-                        device === 'desktop' ? 'bg-blue-100' :
-                        device === 'mobile' ? 'bg-green-100' : 'bg-purple-100'
-                      }`}>
-                        {getDeviceIcon(device)}
-                      </div>
-                      <span className="text-sm font-medium text-gray-900 capitalize">
-                        {device}
-                      </span>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-medium text-gray-900">{count}</p>
-                      <p className="text-xs text-gray-500">
-                        {stats && Math.round((count / stats.summary.totalPageViews) * 100)}%
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            {/* Device Stats */}
+            <Card><CardHeader><CardTitle className="text-base">Devices</CardTitle></CardHeader><CardContent><div className="space-y-3">{Object.entries(stats.deviceStats.devices).map(([device, count]) => {
+              const total = Object.values(stats.deviceStats.devices).reduce((a, b) => a + b, 0);
+              const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+              return (
+                <div key={device} className="flex items-center gap-3">
+                  {getDeviceIcon(device)}
+                  <span className="text-sm capitalize flex-1">{device}</span>
+                  <span className="text-sm text-muted-foreground">{pct}%</span>
+                  <div className="w-20 h-2 bg-secondary rounded-full overflow-hidden"><div className="h-full bg-primary rounded-full" style={{ width: `${pct}%` }} /></div>
+                </div>
+              );
+            })}</div></CardContent></Card>
 
-            {/* Browser Stats */}
-            <div className="bg-white shadow rounded-lg p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-medium text-gray-900">Browser Statistics</h3>
-                <button className="text-sm text-indigo-600 hover:text-indigo-800 font-medium">
-                  View All
-                </button>
-              </div>
-              <div className="space-y-4">
-                {stats?.deviceStats.browsers && Object.entries(stats.deviceStats.browsers).slice(0, 5).map(([browser, count]) => (
-                  <div key={browser} className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="h-8 w-8 bg-gray-100 rounded-full flex items-center justify-center">
-                        <span className="text-xs font-medium text-gray-600">
-                          {browser.charAt(0).toUpperCase()}
-                        </span>
-                      </div>
-                      <span className="text-sm font-medium text-gray-900">
-                        {browser}
-                      </span>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-medium text-gray-900">{count}</p>
-                      <p className="text-xs text-gray-500">
-                        {stats && Math.round((count / stats.summary.totalPageViews) * 100)}%
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            {/* Referrers */}
+            <Card><CardHeader><CardTitle className="text-base">Traffic Sources</CardTitle></CardHeader><CardContent><div className="space-y-2">{Object.entries(stats.referrerStats).sort(([,a],[,b]) => b - a).slice(0, 8).map(([ref, count]) => (
+              <div key={ref} className="flex items-center justify-between text-sm"><span className="truncate flex-1 text-muted-foreground">{ref === 'direct' ? 'Direct' : ref.replace('https://www.', '')}</span><Badge variant="secondary">{count}</Badge></div>
+            ))}{Object.keys(stats.referrerStats).length === 0 && <p className="text-sm text-muted-foreground text-center py-4">No data</p>}</div></CardContent></Card>
 
-            {/* Referrer Stats */}
-            <div className="bg-white shadow rounded-lg p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-medium text-gray-900">Traffic Sources</h3>
-                <button className="text-sm text-indigo-600 hover:text-indigo-800 font-medium">
-                  View All
-                </button>
-              </div>
-              <div className="space-y-4">
-                {stats?.referrerStats && Object.entries(stats.referrerStats).slice(0, 5).map(([referrer, count]) => (
-                  <div key={referrer} className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="h-8 w-8 bg-gray-100 rounded-full flex items-center justify-center">
-                        <span className="text-xs font-medium text-gray-600">
-                          {referrer === 'direct' ? 'D' : referrer.charAt(0).toUpperCase()}
-                        </span>
-                      </div>
-                      <span className="text-sm font-medium text-gray-900 capitalize">
-                        {referrer === 'direct' ? 'Direct Traffic' : referrer}
-                      </span>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-medium text-gray-900">{count}</p>
-                      <p className="text-xs text-gray-500">
-                        {stats && Math.round((count / stats.summary.totalPageViews) * 100)}%
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            {/* Browsers */}
+            <Card><CardHeader><CardTitle className="text-base">Browsers</CardTitle></CardHeader><CardContent><div className="space-y-2">{Object.entries(stats.deviceStats.browsers).sort(([,a],[,b]) => b - a).map(([browser, count]) => {
+              const total = Object.values(stats.deviceStats.browsers).reduce((a, b) => a + b, 0);
+              const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+              return (
+                <div key={browser} className="flex items-center justify-between text-sm"><span className="flex-1">{browser}</span><span className="text-muted-foreground">{pct}%</span></div>
+              );
+            })}</div></CardContent></Card>
           </div>
         </>
       ) : (
-        <div className="bg-white shadow rounded-lg p-12 text-center">
-          <div className="mx-auto h-16 w-16 bg-gray-100 rounded-full flex items-center justify-center">
-            <ChartBarIcon className="h-8 w-8 text-gray-400" />
-          </div>
-          <h3 className="mt-4 text-lg font-medium text-gray-900">No website selected</h3>
-          <p className="mt-2 text-sm text-gray-500">
-            Select a website from the dropdown above to view detailed analytics.
-          </p>
-        </div>
+        <Card><CardContent className="flex flex-col items-center py-16"><Globe className="h-10 w-10 text-muted-foreground mb-3" /><p className="text-muted-foreground">Select a website to view analytics</p></CardContent></Card>
       )}
     </div>
   );

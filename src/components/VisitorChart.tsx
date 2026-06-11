@@ -1,6 +1,6 @@
 'use client';
 
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface VisitorChartProps {
   data: Array<{
@@ -11,93 +11,59 @@ interface VisitorChartProps {
 }
 
 export default function VisitorChart({ data }: VisitorChartProps) {
-  // Format date for display
   const formatData = data.map(item => ({
     ...item,
-    displayDate: new Date(item.date).toLocaleDateString('en-US', { 
-      month: 'short', 
+    displayDate: new Date(item.date).toLocaleDateString('en-US', {
+      month: 'short',
       day: 'numeric',
-      hour: 'numeric'
     })
   }));
 
-  // Custom tooltip
-  const CustomTooltip = ({ active, payload, label }: {
-    active?: boolean;
-    payload?: Array<{
-      color: string;
-      name: string;
-      value: number;
-    }>;
-    label?: string;
-  }) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
-          <p className="text-sm font-medium text-gray-900 mb-2">{label}</p>
-          {payload?.map((entry, index: number) => (
-            <div key={index} className="flex items-center space-x-2">
-              <div 
-                className="w-3 h-3 rounded-full" 
-                style={{ backgroundColor: entry.color }}
-              />
-              <p className="text-sm text-gray-600">
-                {entry.name}: <span className="font-medium text-gray-900">{entry.value}</span>
-              </p>
-            </div>
-          ))}
-        </div>
-      );
-    }
-    return null;
-  };
-
   return (
-    <div className="w-full h-64">
+    <div className="w-full h-[280px]">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart
-          data={formatData}
-          margin={{
-            top: 5,
-            right: 30,
-            left: 20,
-            bottom: 5,
-          }}
-        >
-          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-          <XAxis 
-            dataKey="displayDate" 
-            tick={{ fontSize: 12, fill: '#6b7280' }}
-            tickLine={{ stroke: '#e5e7eb' }}
+        <LineChart data={formatData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+          <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+          <XAxis
+            dataKey="displayDate"
+            tick={{ fontSize: 12 }}
+            className="text-muted-foreground"
+            tickLine={false}
+            axisLine={false}
           />
-          <YAxis 
-            tick={{ fontSize: 12, fill: '#6b7280' }}
-            tickLine={{ stroke: '#e5e7eb' }}
+          <YAxis
+            tick={{ fontSize: 12 }}
+            className="text-muted-foreground"
+            tickLine={false}
+            axisLine={false}
           />
-          <Tooltip content={<CustomTooltip />} />
-          <Legend 
-            wrapperStyle={{
-              paddingTop: '10px'
+          <Tooltip
+            contentStyle={{
+              backgroundColor: 'hsl(var(--popover))',
+              border: '1px solid hsl(var(--border))',
+              borderRadius: '8px',
+              boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
             }}
-            iconType="circle"
+            labelStyle={{ color: 'hsl(var(--foreground))', fontWeight: 500, marginBottom: 4 }}
+            itemStyle={{ color: 'hsl(var(--muted-foreground))', fontSize: 13 }}
           />
           <Line
             type="monotone"
             dataKey="pageViews"
-            stroke="#6366f1"
+            stroke="hsl(var(--chart-1))"
             strokeWidth={2}
-            dot={{ fill: '#6366f1', strokeWidth: 2, r: 3 }}
-            activeDot={{ r: 5 }}
+            dot={false}
+            activeDot={{ r: 4, strokeWidth: 0 }}
             name="Page Views"
           />
           <Line
             type="monotone"
             dataKey="uniqueVisitors"
-            stroke="#10b981"
+            stroke="hsl(var(--chart-2))"
             strokeWidth={2}
-            dot={{ fill: '#10b981', strokeWidth: 2, r: 3 }}
-            activeDot={{ r: 5 }}
-            name="Unique Visitors"
+            dot={false}
+            activeDot={{ r: 4, strokeWidth: 0 }}
+            name="Visitors"
           />
         </LineChart>
       </ResponsiveContainer>

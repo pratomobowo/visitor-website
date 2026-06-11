@@ -2,12 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  PlusCircleIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
-  TrashIcon,
-  PlusIcon,
-} from '@heroicons/react/24/outline';
+  ChevronDown as ChevronDownIcon,
+  ChevronUp as ChevronUpIcon,
+  Trash2 as TrashIcon,
+  Plus as PlusIcon,
+  Database as PlusCircleIcon,
+} from 'lucide-react';
 
 interface Website {
   id: string;
