@@ -17,7 +17,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  BarChart3, Globe, PlusCircle, Beaker, LineChart, Users, Settings,
+  BarChart3, Globe, PlusCircle, LineChart, Users, Settings,
   Menu, X, LogOut, ChevronDown, LayoutDashboard, Activity,
   CalendarDays, TrendingUp,
 } from 'lucide-react';
@@ -30,7 +30,6 @@ const navItems = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Websites', href: '/dashboard/websites', icon: Globe },
   { name: 'Add Website', href: '/dashboard/add-website', icon: PlusCircle },
-  { name: 'Add Data', href: '/dashboard/add-data', icon: Beaker },
 ];
 
 const analyticsItems = [
