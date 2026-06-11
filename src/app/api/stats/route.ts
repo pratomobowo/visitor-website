@@ -13,129 +13,146 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const websiteId = searchParams.get('websiteId');
     const period = searchParams.get('period') || 'today';
-    
+
     if (!websiteId) {
       return NextResponse.json(
         { error: 'Website ID is required' },
         { status: 400 }
       );
     }
-    
-    // Calculate date range
+
     const { startDate, endDate, groupBy } = getDateRange(period);
-    
-    // Get basic stats using PostgreSQL
-    const basicStats = await query(`
-      SELECT * FROM visitors
-      WHERE website_id = $1
-      AND visit_time >= $2
-      AND visit_time <= $3
-    `, [websiteId, startDate.toISOString(), endDate.toISOString()]);
-    
-    // Calculate metrics
-    const totalPageViews = basicStats.length;
-    const uniqueVisitors = new Set((basicStats as { session_id: string }[]).map((v) => v.session_id)).size;
-    const totalSessions = new Set((basicStats as { session_id: string }[]).map((v) => v.session_id)).size;
-    const averageDuration = (basicStats as { duration_seconds?: number }[]).reduce((sum: number, v) => sum + (v.duration_seconds || 0), 0) / totalPageViews || 0;
-    
-    
-    // Get time series data using PostgreSQL
-    const timeSeriesData = await query(`
-      SELECT visit_time, session_id FROM visitors
-      WHERE website_id = $1
-      AND visit_time >= $2
-      AND visit_time <= $3
-      ORDER BY visit_time ASC
-    `, [websiteId, startDate.toISOString(), endDate.toISOString()]);
-    
-    // Group time series data
-    const groupedData = groupTimeSeriesData(timeSeriesData as { visit_time: string; session_id: string }[], groupBy);
-    
-    // Get top pages using PostgreSQL
-    const topPagesData = await query(`
-      SELECT page_url, page_title FROM visitors
-      WHERE website_id = $1
-      AND visit_time >= $2
-      AND visit_time <= $3
-    `, [websiteId, startDate.toISOString(), endDate.toISOString()]);
-    
-    let topPages: Array<{
-      url: string;
-      title: string;
-      count: number;
-    }> = [];
-    if (topPagesData) {
-      const pageCounts = (topPagesData as { page_url: string; page_title: string }[]).reduce((acc: Record<string, { url: string; title: string; count: number }>, visitor) => {
-        const key = visitor.page_url;
-        acc[key] = acc[key] || { url: key, title: visitor.page_title, count: 0 };
-        acc[key].count++;
-        return acc;
-      }, {});
-      
-      topPages = Object.values(pageCounts)
-        .sort((a: { url: string; title: string; count: number }, b: { url: string; title: string; count: number }) => b.count - a.count)
-        .slice(0, 10);
-    }
-    
-    // Get device stats using PostgreSQL
-    const deviceData = await query(`
-      SELECT device_type, browser, os FROM visitors
-      WHERE website_id = $1
-      AND visit_time >= $2
-      AND visit_time <= $3
-    `, [websiteId, startDate.toISOString(), endDate.toISOString()]);
-    
-    const deviceStats: { devices: Record<string, number>, browsers: Record<string, number>, os: Record<string, number> } = { devices: {}, browsers: {}, os: {} };
-    if (deviceData) {
-      (deviceData as Array<{
-        device_type: string;
-        browser: string;
-        os: string;
-      }>).forEach((visitor) => {
-        // Device types
-        const device = visitor.device_type || 'unknown';
-        deviceStats.devices[device] = (deviceStats.devices[device] || 0) + 1;
-        
-        // Browsers
-        const browser = visitor.browser || 'unknown';
-        deviceStats.browsers[browser] = (deviceStats.browsers[browser] || 0) + 1;
-        
-        // Operating systems
-        const os = visitor.os || 'unknown';
-        deviceStats.os[os] = (deviceStats.os[os] || 0) + 1;
-      });
-    }
-    
-    // Get referrer stats using PostgreSQL
-    const referrerData = await query(`
-      SELECT referrer FROM visitors
-      WHERE website_id = $1
-      AND visit_time >= $2
-      AND visit_time <= $3
-    `, [websiteId, startDate.toISOString(), endDate.toISOString()]);
-    
-    const referrerStats: Record<string, number> = {};
-    if (referrerData) {
-      (referrerData as Array<{ referrer: string }>).forEach((visitor) => {
-        const referrer = visitor.referrer || 'direct';
-        referrerStats[referrer] = (referrerStats[referrer] || 0) + 1;
-      });
-    }
-    
+    const start = startDate.toISOString();
+    const end = endDate.toISOString();
+
+    // All queries run in parallel using SQL aggregation (no SELECT * into memory)
+    const [summaryResult, timeSeriesResult, topPagesResult, deviceResult, browserResult, osResult, referrerResult, bounceResult] = await Promise.all([
+      // Summary stats
+      query(`
+        SELECT
+          COUNT(*) as total_page_views,
+          COUNT(DISTINCT session_id) as unique_visitors,
+          COUNT(DISTINCT session_id) as total_sessions,
+          COALESCE(AVG(duration_seconds), 0)::integer as average_duration
+        FROM visitors
+        WHERE website_id = $1 AND visit_time >= $2 AND visit_time <= $3
+      `, [websiteId, start, end]),
+
+      // Time series (grouped by hour/day/month in SQL)
+      query(`
+        SELECT
+          ${getTimeSeriesGroupSQL(groupBy)} as period,
+          COUNT(*) as page_views,
+          COUNT(DISTINCT session_id) as unique_visitors
+        FROM visitors
+        WHERE website_id = $1 AND visit_time >= $2 AND visit_time <= $3
+        GROUP BY period
+        ORDER BY period ASC
+      `, [websiteId, start, end]),
+
+      // Top pages
+      query(`
+        SELECT page_url as url, MAX(page_title) as title, COUNT(*) as count
+        FROM visitors
+        WHERE website_id = $1 AND visit_time >= $2 AND visit_time <= $3
+        GROUP BY page_url
+        ORDER BY count DESC
+        LIMIT 10
+      `, [websiteId, start, end]),
+
+      // Device distribution
+      query(`
+        SELECT COALESCE(device_type, 'unknown') as device, COUNT(*) as count
+        FROM visitors
+        WHERE website_id = $1 AND visit_time >= $2 AND visit_time <= $3
+        GROUP BY device_type
+        ORDER BY count DESC
+      `, [websiteId, start, end]),
+
+      // Browser distribution
+      query(`
+        SELECT COALESCE(browser, 'unknown') as browser, COUNT(*) as count
+        FROM visitors
+        WHERE website_id = $1 AND visit_time >= $2 AND visit_time <= $3
+        GROUP BY browser
+        ORDER BY count DESC
+      `, [websiteId, start, end]),
+
+      // OS distribution
+      query(`
+        SELECT COALESCE(os, 'unknown') as os, COUNT(*) as count
+        FROM visitors
+        WHERE website_id = $1 AND visit_time >= $2 AND visit_time <= $3
+        GROUP BY os
+        ORDER BY count DESC
+      `, [websiteId, start, end]),
+
+      // Referrer distribution
+      query(`
+        SELECT COALESCE(referrer, 'direct') as referrer, COUNT(*) as count
+        FROM visitors
+        WHERE website_id = $1 AND visit_time >= $2 AND visit_time <= $3
+        GROUP BY referrer
+        ORDER BY count DESC
+      `, [websiteId, start, end]),
+
+      // Bounce rate (sessions with only 1 page view)
+      query(`
+        SELECT
+          COUNT(*) as total_sessions,
+          COUNT(*) FILTER (WHERE page_count = 1) as bounced_sessions
+        FROM (
+          SELECT session_id, COUNT(*) as page_count
+          FROM visitors
+          WHERE website_id = $1 AND visit_time >= $2 AND visit_time <= $3
+          GROUP BY session_id
+        ) session_counts
+      `, [websiteId, start, end]),
+    ]);
+
+    // Format results
+    const summary = summaryResult[0] as { total_page_views: string; unique_visitors: string; total_sessions: string; average_duration: number };
+    const bounce = bounceResult[0] as { total_sessions: string; bounced_sessions: string };
+    const totalSessions = parseInt(bounce?.total_sessions || '0');
+    const bouncedSessions = parseInt(bounce?.bounced_sessions || '0');
+    const bounceRate = totalSessions > 0 ? Math.round((bouncedSessions / totalSessions) * 100) : 0;
+
+    const timeSeries = (timeSeriesResult as { period: string; page_views: string; unique_visitors: string }[]).map(row => ({
+      date: row.period,
+      pageViews: parseInt(row.page_views),
+      uniqueVisitors: parseInt(row.unique_visitors),
+    }));
+
+    const topPages = (topPagesResult as { url: string; title: string; count: string }[]).map(row => ({
+      url: row.url,
+      title: row.title,
+      count: parseInt(row.count),
+    }));
+
+    const deviceStats = {
+      devices: Object.fromEntries((deviceResult as { device: string; count: string }[]).map(r => [r.device, parseInt(r.count)])),
+      browsers: Object.fromEntries((browserResult as { browser: string; count: string }[]).map(r => [r.browser, parseInt(r.count)])),
+      os: Object.fromEntries((osResult as { os: string; count: string }[]).map(r => [r.os, parseInt(r.count)])),
+    };
+
+    const referrerStats = Object.fromEntries(
+      (referrerResult as { referrer: string; count: string }[]).map(r => [r.referrer, parseInt(r.count)])
+    );
+
     return NextResponse.json({
       summary: {
-        totalPageViews,
-        uniqueVisitors,
-        totalSessions,
-        averageDuration: Math.round(averageDuration),
-        bounceRate: calculateBounceRate(basicStats as { session_id: string }[])
+        totalPageViews: parseInt(summary?.total_page_views || '0'),
+        uniqueVisitors: parseInt(summary?.unique_visitors || '0'),
+        totalSessions: parseInt(summary?.total_sessions || '0'),
+        averageDuration: summary?.average_duration || 0,
+        bounceRate,
       },
-      timeSeries: groupedData,
+      timeSeries,
       topPages,
       deviceStats,
-      referrerStats
+      referrerStats,
     });
-    
+
   } catch (error) {
     console.error('Error in stats API:', error);
     return NextResponse.json(
@@ -145,28 +162,32 @@ export async function GET(request: NextRequest) {
   }
 }
 
+function getTimeSeriesGroupSQL(groupBy: string): string {
+  switch (groupBy) {
+    case 'hour':
+      return "TO_CHAR(visit_time, 'YYYY-MM-DD HH24:00')";
+    case 'day':
+      return "TO_CHAR(visit_time, 'YYYY-MM-DD')";
+    case 'month':
+      return "TO_CHAR(visit_time, 'YYYY-MM')";
+    default:
+      return "TO_CHAR(visit_time, 'YYYY-MM-DD')";
+  }
+}
+
 function getDateRange(period: string) {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   let startDate, endDate, groupBy;
-  
-  // Handle custom date range
+
   if (period.startsWith('custom:')) {
     const [, startDateStr, endDateStr] = period.split(':');
     startDate = new Date(startDateStr);
-    // Set end date to end of day (23:59:59)
     endDate = new Date(endDateStr);
     endDate.setHours(23, 59, 59, 999);
-    
-    // Determine grouping based on date range length
+
     const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-    if (daysDiff <= 1) {
-      groupBy = 'hour';
-    } else if (daysDiff <= 31) {
-      groupBy = 'day';
-    } else {
-      groupBy = 'month';
-    }
+    groupBy = daysDiff <= 1 ? 'hour' : daysDiff <= 31 ? 'day' : 'month';
   } else {
     switch (period) {
       case 'today':
@@ -200,68 +221,6 @@ function getDateRange(period: string) {
         groupBy = 'hour';
     }
   }
-  
+
   return { startDate, endDate, groupBy };
-}
-
-function groupTimeSeriesData(data: { visit_time: string; session_id: string }[], groupBy: string) {
-  const grouped: Record<string, { date: string; pageViews: number; uniqueVisitors: Set<string> }> = {};
-  
-  data.forEach(item => {
-    const date = new Date(item.visit_time);
-    let key;
-    
-    switch (groupBy) {
-      case 'hour':
-        key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:00`;
-        break;
-      case 'day':
-        key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-        break;
-      case 'month':
-        key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-        break;
-      default:
-        key = date.toISOString();
-    }
-    
-    if (!grouped[key]) {
-      grouped[key] = { date: key, pageViews: 0, uniqueVisitors: new Set() };
-    }
-    
-    grouped[key].pageViews++;
-    grouped[key].uniqueVisitors.add(item.session_id);
-  });
-  
-  // Convert Set to count and sort by date
-  return Object.values(grouped)
-    .map((item) => ({
-      date: item.date,
-      pageViews: item.pageViews,
-      uniqueVisitors: item.uniqueVisitors.size
-    }))
-    .sort((a, b) => a.date.localeCompare(b.date));
-}
-
-function calculateBounceRate(visitors: { session_id: string }[]): number {
-  const sessions: Map<string, { session_id: string }[]> = new Map();
-  
-  visitors.forEach(visitor => {
-    if (!sessions.has(visitor.session_id)) {
-      sessions.set(visitor.session_id, []);
-    }
-    const sessionVisitors = sessions.get(visitor.session_id);
-    if (sessionVisitors) {
-      sessionVisitors.push(visitor);
-    }
-  });
-  
-  let bouncedSessions = 0;
-  sessions.forEach((sessionVisitors) => {
-    if (sessionVisitors.length === 1) {
-      bouncedSessions++;
-    }
-  });
-  
-  return Math.round((bouncedSessions / sessions.size) * 100);
 }

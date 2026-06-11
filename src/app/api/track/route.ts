@@ -1,11 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { insertAndReturn, query } from '@/lib/postgres';
+import { checkRateLimit, getClientIP } from '@/lib/rate-limit';
 
 // Force Node.js runtime for this API route
 export const runtime = 'nodejs';
 
+// Rate limit: 60 requests per minute per IP
+const TRACK_RATE_LIMIT = { maxRequests: 60, windowSeconds: 60 };
+
 export async function POST(request: NextRequest) {
   try {
+    // Rate limiting
+    const clientIP = getClientIP(request.headers);
+    const rateLimitResult = checkRateLimit(`track:${clientIP}`, TRACK_RATE_LIMIT);
+
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        { error: 'Too many requests' },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': rateLimitResult.resetIn.toString(),
+            'X-RateLimit-Remaining': '0',
+          }
+        }
+      );
+    }
     const data = await request.json();
     
     // Validate required fields

@@ -50,10 +50,11 @@ export default function Dashboard() {
   const [statsLoading, setStatsLoading] = useState(false);
   const [period, setPeriod] = useState('week');
 
-  const fetchAllTimeStats = useCallback(async () => {
+  // Fetch all-time stats — only depends on period
+  const fetchAllTimeStats = useCallback(async (currentPeriod: string) => {
     try {
       setStatsLoading(true);
-      const response = await fetch(`/api/stats/all?period=${period}`);
+      const response = await fetch(`/api/stats/all?period=${currentPeriod}`);
       const data = await response.json();
       setAllTimeStats(data);
     } catch (error) {
@@ -62,20 +63,20 @@ export default function Dashboard() {
     } finally {
       setStatsLoading(false);
     }
-  }, [period]);
+  }, []);
 
-  const fetchWebsites = useCallback(async () => {
+  // Fetch websites — no dependency on fetchAllTimeStats
+  const fetchWebsites = useCallback(async (currentPeriod: string) => {
     try {
       const response = await fetch('/api/websites');
       const data = await response.json();
-      
+
       if (data.websites) {
         setWebsites(data.websites);
-        
-        // Fetch stats for each website
+
         if (data.websites.length > 0) {
           fetchStatsForWebsites(data.websites);
-          fetchAllTimeStats();
+          fetchAllTimeStats(currentPeriod);
         }
       }
     } catch (error) {
@@ -85,13 +86,19 @@ export default function Dashboard() {
     }
   }, [fetchAllTimeStats]);
 
+  // Initial load
   useEffect(() => {
-    fetchWebsites();
-  }, [fetchWebsites]);
+    fetchWebsites(period);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
+  // When period changes, only re-fetch stats (not websites)
   useEffect(() => {
-    fetchAllTimeStats();
-  }, [fetchAllTimeStats]);
+    if (!loading) {
+      fetchAllTimeStats(period);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period]);
 
   const fetchStatsForWebsites = async (websites: Website[]) => {
     const statsPromises = websites.map(async (website) => {
