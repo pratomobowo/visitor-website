@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/postgres';
+import { requireAuth, isUser } from '@/lib/require-auth';
 
 // Force Node.js runtime for this API route
 export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
   try {
+    const authResult = await requireAuth(request);
+    if (!isUser(authResult)) return authResult;
+
     const { searchParams } = new URL(request.url);
     const websiteId = searchParams.get('websiteId');
     
@@ -18,7 +22,6 @@ export async function GET(request: NextRequest) {
       `);
       
       const count = (realTimeVisitors[0] as { count: string })?.count || 0;
-      console.log('DEBUG: Total realtime visitors (all websites):', count);
       return NextResponse.json({ count });
     }
     
@@ -31,7 +34,6 @@ export async function GET(request: NextRequest) {
     `, [websiteId]);
     
     const count = (realTimeVisitors[0] as { count: string })?.count || 0;
-    console.log('DEBUG: Realtime visitors for website', websiteId, ':', count);
     return NextResponse.json({ count });
     
   } catch (error) {

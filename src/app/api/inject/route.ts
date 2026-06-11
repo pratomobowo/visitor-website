@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { queryOne, query } from '@/lib/postgres';
+import { requireAdmin, isUser } from '@/lib/require-auth';
 
 // Force Node.js runtime for this API route
 export const runtime = 'nodejs';
@@ -43,6 +44,9 @@ interface InjectPayload {
 
 export async function POST(request: NextRequest) {
   try {
+    // Admin only
+    const authResult = await requireAdmin(request);
+    if (!isUser(authResult)) return authResult;
     const payload: InjectPayload = await request.json();
 
     const {

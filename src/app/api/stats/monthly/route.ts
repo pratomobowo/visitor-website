@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/postgres';
+import { requireAuth, isUser } from '@/lib/require-auth';
 
 // Force Node.js runtime for this API route
 export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
   try {
+    const authResult = await requireAuth(request);
+    if (!isUser(authResult)) return authResult;
+
     const { searchParams } = new URL(request.url);
     const websiteId = searchParams.get('websiteId');
     const year = searchParams.get('year') || new Date().getFullYear().toString();

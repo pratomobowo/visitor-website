@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { insertAndReturn } from '@/lib/postgres';
+import { insertAndReturn, query } from '@/lib/postgres';
 
 // Force Node.js runtime for this API route
 export const runtime = 'nodejs';
@@ -8,50 +8,72 @@ export async function POST(request: NextRequest) {
   try {
     const data = await request.json();
     
-    console.log('DEBUG: Received tracking data:', data);
-    
     // Validate required fields
     const { website_id, session_id, page_url, page_title } = data;
     
     if (!website_id || !session_id || !page_url) {
-      console.log('DEBUG: Missing required fields:', { website_id, session_id, page_url });
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
       );
     }
     
-    console.log('DEBUG: website_id received:', website_id, 'type:', typeof website_id);
+    // If this is a duration update, update existing record instead of inserting new one
+    if (data.is_duration_update && data.duration_seconds) {
+      try {
+        await query(
+          `UPDATE visitors 
+           SET duration_seconds = $1 
+           WHERE session_id = $2 AND page_url = $3 AND website_id = $4
+           AND duration_seconds = 0
+           ORDER BY visit_time DESC
+           LIMIT 1`,
+          [Math.round(data.duration_seconds), session_id, page_url, website_id]
+        );
+      } catch {
+        // Fallback: PostgreSQL doesn't support ORDER BY + LIMIT in UPDATE directly
+        // Use subquery instead
+        await query(
+          `UPDATE visitors SET duration_seconds = $1 
+           WHERE id = (
+             SELECT id FROM visitors 
+             WHERE session_id = $2 AND page_url = $3 AND website_id = $4 AND duration_seconds = 0
+             ORDER BY visit_time DESC LIMIT 1
+           )`,
+          [Math.round(data.duration_seconds), session_id, page_url, website_id]
+        );
+      }
+      return NextResponse.json({ success: true, updated: true });
+    }
     
-    // Get IP address (handle multiple IPs in x-forwarded-for header)
+    // Get IP address
     const forwardedFor = request.headers.get('x-forwarded-for');
     const realIp = request.headers.get('x-real-ip');
     
     let ip = 'unknown';
     if (forwardedFor) {
-      // x-forwarded-for can contain multiple IPs, take the first one
       ip = forwardedFor.split(',')[0].trim();
     } else if (realIp) {
       ip = realIp;
     }
     
-    // Validate IP format (basic validation)
-    if (ip !== 'unknown' && !/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip)) {
-      console.log('DEBUG: Invalid IP format, using unknown:', ip);
-      ip = 'unknown';
+    // Validate IP (support both IPv4 and IPv6)
+    if (ip !== 'unknown') {
+      const isIPv4 = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip);
+      const isIPv6 = /^[0-9a-fA-F:]+$/.test(ip);
+      if (!isIPv4 && !isIPv6) {
+        ip = 'unknown';
+      }
     }
     
-    console.log('DEBUG: Final IP address:', ip);
-    
-    // Parse user agent (simple implementation)
+    // Parse user agent
     const userAgentString = request.headers.get('user-agent') || data.user_agent || '';
     const { browser, os, device_type } = parseUserAgent(userAgentString);
     
-    // Extract additional information
     const visitorData = {
       website_id,
       session_id,
-      ip_address: ip === 'unknown' ? null : ip, // Store null for unknown IPs
+      ip_address: ip === 'unknown' ? null : ip,
       user_agent: userAgentString,
       referrer: data.referrer || null,
       page_url,
@@ -66,11 +88,8 @@ export async function POST(request: NextRequest) {
       device_type
     };
     
-    // Insert visitor data into PostgreSQL
-    console.log('DEBUG: Inserting visitor data:', visitorData);
     const insertData = await insertAndReturn('visitors', visitorData);
     
-    console.log('Successfully inserted visitor data:', insertData);
     return NextResponse.json({ success: true, data: insertData });
     
   } catch (error) {

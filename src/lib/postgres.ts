@@ -17,7 +17,6 @@ const pool = new Pool({
 export async function getConnection(): Promise<PoolClient> {
   try {
     const client = await pool.connect();
-    console.log('Database connected successfully');
     return client;
   } catch (error) {
     console.error('Error connecting to database:', error);
@@ -29,13 +28,10 @@ export async function getConnection(): Promise<PoolClient> {
 export async function query<T = unknown>(text: string, params?: unknown[]): Promise<T[]> {
   const client = await getConnection();
   try {
-    const start = Date.now();
     const result = await client.query(text, params);
-    const duration = Date.now() - start;
-    console.log('Executed query', { text, duration, rows: result.rowCount });
     return result.rows;
   } catch (error) {
-    console.error('Error executing query:', error);
+    console.error('Query error:', error);
     throw error;
   } finally {
     client.release();
@@ -78,10 +74,15 @@ export async function updateAndReturn<T = unknown>(
   const values = Object.values(data);
   const setClause = keys.map((key, index) => `${key} = $${index + 1}`).join(', ');
   
+  // Fix: whereClause placeholders need to be offset by the number of SET values
+  // e.g. if there are 3 SET values, WHERE id = $1 should become WHERE id = $4
+  const offset = keys.length;
+  const adjustedWhereClause = whereClause.replace(/\$(\d+)/g, (_, num) => `$${parseInt(num) + offset}`);
+  
   const queryText = `
     UPDATE ${table} 
     SET ${setClause} 
-    WHERE ${whereClause} 
+    WHERE ${adjustedWhereClause} 
     RETURNING *
   `;
   
@@ -99,6 +100,7 @@ export async function deleteAndReturn<T = unknown>(
   whereClause: string,
   whereParams: unknown[] = []
 ): Promise<T> {
+  // No offset needed for delete since there's no SET clause
   const queryText = `
     DELETE FROM ${table} 
     WHERE ${whereClause} 

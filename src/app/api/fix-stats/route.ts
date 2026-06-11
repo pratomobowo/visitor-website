@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/postgres';
+import { requireAdmin, isUser } from '@/lib/require-auth';
 
 // Force Node.js runtime for this API route
 export const runtime = 'nodejs';
@@ -11,10 +12,12 @@ export const runtime = 'nodejs';
  * 1. Updating the trigger function to correctly count DISTINCT sessions
  * 2. Recalculating all daily_stats from the visitors table
  * 
- * Run this once after deploying the fix.
+ * Run this once after deploying the fix. Admin only.
  */
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
+    const authResult = await requireAdmin(request);
+    if (!isUser(authResult)) return authResult;
     // Step 1: Fix the trigger function
     await query(`
       CREATE OR REPLACE FUNCTION update_daily_stats()

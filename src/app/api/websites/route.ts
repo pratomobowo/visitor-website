@@ -1,41 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, insertAndReturn } from '@/lib/postgres';
+import { requireAuth, isUser } from '@/lib/require-auth';
 
 // Force Node.js runtime for this API route
 export const runtime = 'nodejs';
 
-// GET - Fetch all websites
-export async function GET() {
+// GET - Fetch all websites (requires auth)
+export async function GET(request: NextRequest) {
   try {
-    console.log('Fetching websites...');
-    
-    // Fetch websites using PostgreSQL
+    const authResult = await requireAuth(request);
+    if (!isUser(authResult)) return authResult;
+
     const websites = await query(`
       SELECT * FROM websites
       ORDER BY created_at DESC
     `);
-    
-    console.log('Successfully fetched websites:', websites?.length || 0);
-    
-    // If no websites exist, create a sample one for testing
-    if (!websites || websites.length === 0) {
-      try {
-        const newWebsite = await insertAndReturn('websites', {
-          name: 'Example Website',
-          domain: 'example.com',
-          tracking_id: 'EXAMPLE123',
-          is_active: true
-        });
-        
-        console.log('Created sample website:', newWebsite);
-        return NextResponse.json({ websites: [newWebsite] });
-      } catch (insertError) {
-        console.error('Error creating sample website:', insertError);
-      }
-    }
-    
+
     return NextResponse.json({ websites: websites || [] });
-    
+
   } catch (error) {
     console.error('Error in websites GET API:', error);
     return NextResponse.json(
@@ -45,30 +27,33 @@ export async function GET() {
   }
 }
 
-// POST - Create new website
+// POST - Create new website (requires auth)
 export async function POST(request: NextRequest) {
   try {
+    const authResult = await requireAuth(request);
+    if (!isUser(authResult)) return authResult;
+
     const { name, domain } = await request.json();
-    
+
     if (!name || !domain) {
       return NextResponse.json(
         { error: 'Name and domain are required' },
         { status: 400 }
       );
     }
-    
+
     // Generate unique tracking ID
     const trackingId = generateTrackingId();
-    
-    // Create website using PostgreSQL
+
+    // Create website
     const website = await insertAndReturn('websites', {
       name,
       domain,
       tracking_id: trackingId
     });
-    
+
     return NextResponse.json({ website });
-    
+
   } catch (error) {
     console.error('Error in websites POST API:', error);
     return NextResponse.json(
@@ -78,24 +63,26 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// DELETE - Delete website
+// DELETE - Delete website (requires auth)
 export async function DELETE(request: NextRequest) {
   try {
+    const authResult = await requireAuth(request);
+    if (!isUser(authResult)) return authResult;
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
-    
+
     if (!id) {
       return NextResponse.json(
         { error: 'Website ID is required' },
         { status: 400 }
       );
     }
-    
-    // Delete website using PostgreSQL
+
     await query('DELETE FROM websites WHERE id = $1', [id]);
-    
+
     return NextResponse.json({ success: true });
-    
+
   } catch (error) {
     console.error('Error in websites DELETE API:', error);
     return NextResponse.json(
