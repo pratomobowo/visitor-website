@@ -4,57 +4,136 @@ import { queryOne, query } from '@/lib/postgres';
 // Force Node.js runtime for this API route
 export const runtime = 'nodejs';
 
+interface WeightedItem {
+  value: string;
+  weight: number;
+}
+
+interface CustomPage {
+  url: string;
+  title: string;
+  weight: number;
+}
+
+interface InjectPayload {
+  websiteId: string;
+  visitorCount: number;
+  distribution: 'random' | 'peak' | 'night' | 'weekend' | 'weekday';
+  // Date config
+  year?: string;
+  month?: string;
+  startDate?: string;
+  endDate?: string;
+  dateRange?: string;
+  // Session config
+  minDuration: number;
+  maxDuration: number;
+  bounceRate: number;
+  minPagesPerSession: number;
+  maxPagesPerSession: number;
+  // Distribution weights
+  countries?: WeightedItem[];
+  cities?: WeightedItem[];
+  devices?: WeightedItem[];
+  browsers?: WeightedItem[];
+  operatingSystems?: WeightedItem[];
+  referrers?: WeightedItem[];
+  customPages?: CustomPage[];
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const { websiteId, visitorCount, dateRange, distribution, year, month } = await request.json();
-    
+    const payload: InjectPayload = await request.json();
+
+    const {
+      websiteId,
+      visitorCount,
+      distribution = 'random',
+      year,
+      month,
+      startDate: startDateStr,
+      endDate: endDateStr,
+      dateRange,
+      minDuration = 5,
+      maxDuration = 300,
+      bounceRate = 40,
+      minPagesPerSession = 1,
+      maxPagesPerSession = 5,
+      countries,
+      cities,
+      devices,
+      browsers,
+      operatingSystems,
+      referrers,
+      customPages,
+    } = payload;
+
     if (!websiteId || !visitorCount) {
       return NextResponse.json(
         { error: 'Website ID and visitor count are required' },
         { status: 400 }
       );
     }
-    
+
+    if (visitorCount > 100000) {
+      return NextResponse.json(
+        { error: 'Maximum 100,000 visitors per injection' },
+        { status: 400 }
+      );
+    }
+
     // Get website info
     const website = await queryOne(
       'SELECT * FROM websites WHERE id = $1',
       [websiteId]
     );
-    
+
     if (!website) {
       return NextResponse.json(
         { error: 'Website not found' },
         { status: 404 }
       );
     }
-    
-    // Generate fake visitor data
-    const fakeVisitors = generateFakeVisitors(
-      website as { domain: string; name: string },
+
+    const websiteData = website as { id: string; domain: string; name: string };
+
+    // Calculate date range
+    const { start, end } = calculateDateRange(year, month, startDateStr, endDateStr, dateRange);
+
+    // Generate visitor data
+    const fakeVisitors = generateVisitors({
       websiteId,
-      visitorCount,
-      dateRange || 'today',
-      distribution || 'even',
-      year,
-      month
-    );
-    
-    // Insert data in batches to avoid timeout
-    const batchSize = 100;
+      domain: websiteData.domain,
+      count: visitorCount,
+      startDate: start,
+      endDate: end,
+      distribution,
+      minDuration,
+      maxDuration,
+      bounceRate,
+      minPagesPerSession,
+      maxPagesPerSession,
+      countries: countries || getDefaultCountries(),
+      cities: cities || getDefaultCities(),
+      devices: devices || getDefaultDevices(),
+      browsers: browsers || getDefaultBrowsers(),
+      operatingSystems: operatingSystems || getDefaultOS(),
+      referrers: referrers || getDefaultReferrers(),
+      customPages: customPages || null,
+    });
+
+    // Insert data in batches
+    const batchSize = 200;
     let insertedCount = 0;
-    
+
     for (let i = 0; i < fakeVisitors.length; i += batchSize) {
       const batch = fakeVisitors.slice(i, i + batchSize);
-      
-      console.log('Inserting batch:', batch.length);
-      
-      // Create placeholder string for batch insert
+
       const placeholders = batch.map((_, index) => {
-        const offset = index * 15; // 15 fields per visitor (website_id through device_type)
+        const offset = index * 15;
         return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14}, $${offset + 15})`;
       }).join(', ');
-      
-      // Flatten all values
+
       const values = batch.flatMap(visitor => [
         visitor.website_id,
         visitor.session_id,
@@ -72,7 +151,7 @@ export async function POST(request: NextRequest) {
         visitor.os,
         visitor.device_type
       ]);
-      
+
       try {
         await query(`
           INSERT INTO visitors (
@@ -81,7 +160,7 @@ export async function POST(request: NextRequest) {
             country, city, browser, os, device_type
           ) VALUES ${placeholders}
         `, values);
-        
+
         insertedCount += batch.length;
       } catch (error) {
         console.error('Error inserting batch:', error);
@@ -91,13 +170,13 @@ export async function POST(request: NextRequest) {
         );
       }
     }
-    
+
     return NextResponse.json({
       success: true,
       injectedCount: insertedCount,
-      message: `Successfully injected ${insertedCount} fake visitors for ${(website as { name: string }).name}`
+      message: `Successfully injected ${insertedCount.toLocaleString()} visitors for ${websiteData.name}`
     });
-    
+
   } catch (error) {
     console.error('Error in inject API:', error);
     return NextResponse.json(
@@ -107,15 +186,159 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function generateFakeVisitors(
-  website: { domain: string; name: string },
-  websiteId: string,
-  count: number,
-  dateRange: string,
-  distribution: string,
+// --- Date Range Calculation ---
+
+function calculateDateRange(
   year?: string,
-  month?: string
-): {
+  month?: string,
+  startDateStr?: string,
+  endDateStr?: string,
+  dateRange?: string
+): { start: Date; end: Date } {
+  const now = new Date();
+
+  if (year && month) {
+    const selectedYear = parseInt(year);
+    const selectedMonth = parseInt(month) - 1;
+    const start = new Date(selectedYear, selectedMonth, 1);
+    const end = new Date(selectedYear, selectedMonth + 1, 0, 23, 59, 59);
+    return { start, end };
+  }
+
+  if (startDateStr && endDateStr) {
+    const start = new Date(startDateStr);
+    const end = new Date(endDateStr);
+    end.setHours(23, 59, 59, 999);
+    return { start, end };
+  }
+
+  switch (dateRange) {
+    case 'today':
+      return {
+        start: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
+        end: now
+      };
+    case 'week':
+      return {
+        start: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000),
+        end: now
+      };
+    case 'yesterday':
+      return {
+        start: new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1),
+        end: new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      };
+    default:
+      return {
+        start: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
+        end: now
+      };
+  }
+}
+
+// --- Weighted Random Selection ---
+
+function weightedRandom(items: WeightedItem[]): string {
+  const totalWeight = items.reduce((sum, item) => sum + item.weight, 0);
+  if (totalWeight === 0) return items[0]?.value || '';
+
+  let random = Math.random() * totalWeight;
+  for (const item of items) {
+    random -= item.weight;
+    if (random <= 0) {
+      return item.value;
+    }
+  }
+  return items[items.length - 1].value;
+}
+
+function weightedRandomPage(pages: CustomPage[]): { url: string; title: string } {
+  const totalWeight = pages.reduce((sum, p) => sum + p.weight, 0);
+  if (totalWeight === 0) return { url: pages[0]?.url || '/', title: pages[0]?.title || 'Home' };
+
+  let random = Math.random() * totalWeight;
+  for (const page of pages) {
+    random -= page.weight;
+    if (random <= 0) {
+      return { url: page.url, title: page.title };
+    }
+  }
+  return { url: pages[pages.length - 1].url, title: pages[pages.length - 1].title };
+}
+
+// --- Date Generation with Distribution ---
+
+function generateRandomDate(start: Date, end: Date, distribution: string): Date {
+  const startTime = start.getTime();
+  const endTime = end.getTime();
+  const range = endTime - startTime;
+
+  // Try up to 50 times to match distribution, then accept any random date
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const randomTime = startTime + Math.random() * range;
+    const date = new Date(randomTime);
+    const hour = date.getHours();
+    const day = date.getDay(); // 0 = Sunday, 6 = Saturday
+
+    switch (distribution) {
+      case 'peak':
+        // Bias towards 9 AM - 5 PM
+        if (hour >= 9 && hour <= 17) return date;
+        if (Math.random() < 0.15) return date; // 15% chance outside peak
+        break;
+
+      case 'night':
+        // Bias towards 8 PM - 2 AM
+        if (hour >= 20 || hour <= 2) return date;
+        if (Math.random() < 0.15) return date;
+        break;
+
+      case 'weekend':
+        // Heavier on weekends
+        if (day === 0 || day === 6) return date;
+        if (Math.random() < 0.3) return date; // 30% on weekdays
+        break;
+
+      case 'weekday':
+        // Heavier on weekdays
+        if (day >= 1 && day <= 5) return date;
+        if (Math.random() < 0.2) return date; // 20% on weekends
+        break;
+
+      case 'random':
+      default:
+        return date;
+    }
+  }
+
+  // Fallback: return random date
+  return new Date(startTime + Math.random() * range);
+}
+
+// --- Visitor Generation ---
+
+interface GeneratorConfig {
+  websiteId: string;
+  domain: string;
+  count: number;
+  startDate: Date;
+  endDate: Date;
+  distribution: string;
+  minDuration: number;
+  maxDuration: number;
+  bounceRate: number;
+  minPagesPerSession: number;
+  maxPagesPerSession: number;
+  countries: WeightedItem[];
+  cities: WeightedItem[];
+  devices: WeightedItem[];
+  browsers: WeightedItem[];
+  operatingSystems: WeightedItem[];
+  referrers: WeightedItem[];
+  customPages: CustomPage[] | null;
+}
+
+interface VisitorRecord {
   website_id: string;
   session_id: string;
   ip_address: string;
@@ -131,180 +354,234 @@ function generateFakeVisitors(
   browser: string;
   os: string;
   device_type: string;
-}[] {
-  const visitors = [];
-  const now = new Date();
-  let startDate, endDate;
-  
-  // If year and month are provided, use them to set the date range
-  if (year && month) {
-    const selectedYear = parseInt(year);
-    const selectedMonth = parseInt(month) - 1; // JavaScript months are 0-indexed
-    
-    // Set start date to beginning of the selected month
-    startDate = new Date(selectedYear, selectedMonth, 1);
-    
-    // Set end date to end of the selected month
-    endDate = new Date(selectedYear, selectedMonth + 1, 0); // Last day of the month
-  } else {
-    // Fallback to original date range logic
-    switch (dateRange) {
-      case 'today':
-        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        endDate = now;
-        break;
-      case 'yesterday':
-        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-        endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        break;
-      case 'week':
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        endDate = now;
-        break;
-      case 'month':
-        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        endDate = now;
-        break;
-      default:
-        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        endDate = now;
+}
+
+function generateVisitors(config: GeneratorConfig): VisitorRecord[] {
+  const {
+    websiteId,
+    domain,
+    count,
+    startDate,
+    endDate,
+    distribution,
+    minDuration,
+    maxDuration,
+    bounceRate,
+    minPagesPerSession,
+    maxPagesPerSession,
+    countries,
+    cities,
+    devices,
+    browsers,
+    operatingSystems,
+    referrers,
+    customPages,
+  } = config;
+
+  const visitors: VisitorRecord[] = [];
+  const defaultPages: CustomPage[] = [
+    { url: '/', title: 'Home', weight: 30 },
+    { url: '/about', title: 'About Us', weight: 15 },
+    { url: '/services', title: 'Services', weight: 15 },
+    { url: '/products', title: 'Products', weight: 12 },
+    { url: '/blog', title: 'Blog', weight: 10 },
+    { url: '/contact', title: 'Contact', weight: 8 },
+    { url: '/gallery', title: 'Gallery', weight: 5 },
+    { url: '/testimonials', title: 'Testimonials', weight: 5 },
+  ];
+
+  const pages = customPages || defaultPages;
+
+  // Generate sessions. Each session = 1 unique visitor with potentially multiple page views.
+  let sessionIndex = 0;
+
+  while (visitors.length < count) {
+    const sessionId = `fake_${Date.now().toString(36)}_${Math.random().toString(36).substr(2, 7)}_${sessionIndex}`;
+    sessionIndex++;
+
+    // Decide if this visitor bounces
+    const isBounce = Math.random() * 100 < bounceRate;
+
+    // Number of page views for this session
+    let pageViewCount: number;
+    if (isBounce) {
+      pageViewCount = 1;
+    } else {
+      pageViewCount = minPagesPerSession + Math.floor(Math.random() * (maxPagesPerSession - minPagesPerSession + 1));
+      pageViewCount = Math.max(2, pageViewCount); // Non-bounce must have at least 2
+    }
+
+    // Don't exceed total count
+    pageViewCount = Math.min(pageViewCount, count - visitors.length);
+
+    // Visitor characteristics (consistent per session)
+    const country = weightedRandom(countries);
+    const city = weightedRandom(cities);
+    const deviceType = weightedRandom(devices);
+    const browser = weightedRandom(browsers);
+    const os = weightedRandom(operatingSystems);
+    const referrer = weightedRandom(referrers);
+    const ip = generateRandomIP();
+    const userAgent = generateUserAgentForBrowserOS(browser, os, deviceType);
+
+    // Generate a base visit time for this session
+    const sessionStartTime = generateRandomDate(startDate, endDate, distribution);
+
+    for (let pageIndex = 0; pageIndex < pageViewCount; pageIndex++) {
+      const page = weightedRandomPage(pages);
+      const duration = minDuration + Math.floor(Math.random() * (maxDuration - minDuration));
+
+      // Each page view happens a bit after the previous one
+      const pageTime = new Date(sessionStartTime.getTime() + pageIndex * duration * 1000);
+
+      visitors.push({
+        website_id: websiteId,
+        session_id: sessionId,
+        ip_address: ip,
+        user_agent: userAgent,
+        referrer: referrer === 'direct' ? null : referrer,
+        page_url: `https://${domain}${page.url}`,
+        page_title: page.title,
+        visit_time: pageTime.toISOString(),
+        duration_seconds: duration,
+        is_fake: true,
+        country,
+        city,
+        browser,
+        os,
+        device_type: deviceType,
+      });
     }
   }
-  
-  // Generate visitors
-  for (let i = 0; i < count; i++) {
-    const visitTime = generateRandomDate(startDate, endDate, distribution);
-    const sessionId = `fake_session_${Math.random().toString(36).substr(2, 9)}_${i}`;
-    
-    visitors.push({
-      website_id: websiteId,
-      session_id: sessionId,
-      ip_address: generateRandomIP(),
-      user_agent: generateRandomUserAgent(),
-      referrer: generateRandomReferrer(),
-      page_url: generateRandomPageUrl(website.domain),
-      page_title: generateRandomPageTitle(),
-      visit_time: visitTime.toISOString(),
-      duration_seconds: Math.floor(Math.random() * 300) + 10, // 10-310 seconds (already integer)
-      is_fake: true,
-      country: generateRandomCountry(),
-      city: generateRandomCity(),
-      browser: generateRandomBrowser(),
-      os: generateRandomOS(),
-      device_type: generateRandomDeviceType()
-    });
-  }
-  
+
   return visitors;
 }
 
-function generateRandomDate(start: Date, end: Date, distribution: string): Date {
-  const randomTime = start.getTime() + Math.random() * (end.getTime() - start.getTime());
-  
-  if (distribution === 'peak') {
-    // Add bias towards business hours (9 AM - 5 PM)
-    const hour = new Date(randomTime).getHours();
-    if (hour < 9 || hour > 17) {
-      return generateRandomDate(start, end, distribution);
-    }
-  }
-  
-  return new Date(randomTime);
-}
+// --- Helper Generators ---
 
 function generateRandomIP(): string {
-  return `${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}`;
+  // Avoid reserved ranges
+  const first = Math.floor(Math.random() * 223) + 1;
+  return `${first}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 254) + 1}`;
 }
 
-function generateRandomUserAgent(): string {
-  const userAgents = [
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15',
-    'Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1'
+function generateUserAgentForBrowserOS(browser: string, os: string, deviceType: string): string {
+  const osStrings: Record<string, string> = {
+    'Windows': 'Windows NT 10.0; Win64; x64',
+    'macOS': 'Macintosh; Intel Mac OS X 10_15_7',
+    'Linux': 'X11; Linux x86_64',
+    'Android': 'Linux; Android 13; SM-G991B',
+    'iOS': 'iPhone; CPU iPhone OS 17_0 like Mac OS X',
+  };
+
+  const browserVersions: Record<string, string> = {
+    'Chrome': '120.0.6099.109',
+    'Firefox': '121.0',
+    'Safari': '17.2',
+    'Edge': '120.0.2210.91',
+    'Opera': '105.0.4970.29',
+  };
+
+  const osStr = osStrings[os] || osStrings['Windows'];
+  const version = browserVersions[browser] || browserVersions['Chrome'];
+
+  // Mobile override for Android/iOS
+  if (deviceType === 'mobile' && os === 'iOS') {
+    return `Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/${version} Mobile/15E148 Safari/604.1`;
+  }
+
+  if (deviceType === 'mobile' && os === 'Android') {
+    return `Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${version} Mobile Safari/537.36`;
+  }
+
+  if (deviceType === 'tablet') {
+    return `Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/${version} Mobile/15E148 Safari/604.1`;
+  }
+
+  switch (browser) {
+    case 'Chrome':
+      return `Mozilla/5.0 (${osStr}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${version} Safari/537.36`;
+    case 'Firefox':
+      return `Mozilla/5.0 (${osStr}; rv:${version}) Gecko/20100101 Firefox/${version}`;
+    case 'Safari':
+      return `Mozilla/5.0 (${osStr}) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/${version} Safari/605.1.15`;
+    case 'Edge':
+      return `Mozilla/5.0 (${osStr}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${version} Safari/537.36 Edg/${version}`;
+    case 'Opera':
+      return `Mozilla/5.0 (${osStr}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${version} Safari/537.36 OPR/${version}`;
+    default:
+      return `Mozilla/5.0 (${osStr}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${version} Safari/537.36`;
+  }
+}
+
+// --- Default Distributions ---
+
+function getDefaultCountries(): WeightedItem[] {
+  return [
+    { value: 'ID', weight: 50 },
+    { value: 'US', weight: 15 },
+    { value: 'SG', weight: 10 },
+    { value: 'MY', weight: 8 },
+    { value: 'AU', weight: 5 },
+    { value: 'JP', weight: 4 },
+    { value: 'KR', weight: 3 },
+    { value: 'IN', weight: 3 },
+    { value: 'TH', weight: 2 },
   ];
-  
-  return userAgents[Math.floor(Math.random() * userAgents.length)];
 }
 
-function generateRandomReferrer(): string | null {
-  const referrers = [
-    'https://www.google.com',
-    'https://www.facebook.com',
-    'https://www.twitter.com',
-    'https://www.instagram.com',
-    'https://www.linkedin.com',
-    null // Direct traffic
+function getDefaultCities(): WeightedItem[] {
+  return [
+    { value: 'Jakarta', weight: 30 },
+    { value: 'Bandung', weight: 15 },
+    { value: 'Surabaya', weight: 12 },
+    { value: 'Medan', weight: 10 },
+    { value: 'Semarang', weight: 8 },
+    { value: 'Makassar', weight: 7 },
+    { value: 'Tangerang', weight: 6 },
+    { value: 'Palembang', weight: 5 },
+    { value: 'Yogyakarta', weight: 4 },
+    { value: 'Denpasar', weight: 3 },
   ];
-  
-  return referrers[Math.floor(Math.random() * referrers.length)];
 }
 
-function generateRandomPageUrl(domain: string): string {
-  const pages = [
-    '/',
-    '/about',
-    '/contact',
-    '/services',
-    '/products',
-    '/blog',
-    '/gallery',
-    '/testimonials'
+function getDefaultDevices(): WeightedItem[] {
+  return [
+    { value: 'desktop', weight: 55 },
+    { value: 'mobile', weight: 38 },
+    { value: 'tablet', weight: 7 },
   ];
-  
-  return `https://${domain}${pages[Math.floor(Math.random() * pages.length)]}`;
 }
 
-function generateRandomPageTitle(): string {
-  const titles = [
-    'Home',
-    'About Us',
-    'Contact',
-    'Services',
-    'Products',
-    'Blog',
-    'Gallery',
-    'Testimonials',
-    'Our Team',
-    'FAQ'
+function getDefaultBrowsers(): WeightedItem[] {
+  return [
+    { value: 'Chrome', weight: 60 },
+    { value: 'Safari', weight: 18 },
+    { value: 'Firefox', weight: 10 },
+    { value: 'Edge', weight: 8 },
+    { value: 'Opera', weight: 4 },
   ];
-  
-  return titles[Math.floor(Math.random() * titles.length)];
 }
 
-function generateRandomCountry(): string {
-  const countries = ['ID', 'US', 'SG', 'MY', 'AU', 'JP', 'KR', 'CN', 'IN', 'TH'];
-  return countries[Math.floor(Math.random() * countries.length)];
+function getDefaultOS(): WeightedItem[] {
+  return [
+    { value: 'Windows', weight: 40 },
+    { value: 'Android', weight: 25 },
+    { value: 'macOS', weight: 15 },
+    { value: 'iOS', weight: 15 },
+    { value: 'Linux', weight: 5 },
+  ];
 }
 
-function generateRandomCity(): string {
-  const cities = ['Jakarta', 'Bandung', 'Surabaya', 'Medan', 'Semarang', 'Makassar', 'Palembang', 'Tangerang'];
-  return cities[Math.floor(Math.random() * cities.length)];
+function getDefaultReferrers(): WeightedItem[] {
+  return [
+    { value: 'direct', weight: 30 },
+    { value: 'https://www.google.com', weight: 35 },
+    { value: 'https://www.facebook.com', weight: 12 },
+    { value: 'https://www.instagram.com', weight: 8 },
+    { value: 'https://www.twitter.com', weight: 5 },
+    { value: 'https://www.linkedin.com', weight: 5 },
+    { value: 'https://www.youtube.com', weight: 3 },
+    { value: 'https://www.tiktok.com', weight: 2 },
+  ];
 }
-
-function generateRandomBrowser(): string {
-  const browsers = ['Chrome', 'Firefox', 'Safari', 'Edge', 'Opera'];
-  return browsers[Math.floor(Math.random() * browsers.length)];
-}
-
-function generateRandomOS(): string {
-  const os = ['Windows', 'MacOS', 'Linux', 'Android', 'iOS'];
-  return os[Math.floor(Math.random() * os.length)];
-}
-
-function generateRandomDeviceType(): string {
-  const types = ['desktop', 'mobile', 'tablet'];
-  return types[Math.floor(Math.random() * types.length)];
-}
-
-// These functions are defined but not used - keeping for potential future use
-// function generateRandomResolution(): string {
-//   const resolutions = ['1920x1080', '1366x768', '1440x900', '1280x720', '2560x1440'];
-//   return resolutions[Math.floor(Math.random() * resolutions.length)];
-// }
-
-// function generateRandomViewport(): string {
-//   const viewports = ['1200x800', '1024x768', '800x600', '1440x900', '1920x1080'];
-//   return viewports[Math.floor(Math.random() * viewports.length)];
-// }
