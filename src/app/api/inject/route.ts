@@ -434,6 +434,11 @@ function generateVisitors(config: GeneratorConfig): VisitorRecord[] {
       // Each page view happens a bit after the previous one
       const pageTime = new Date(sessionStartTime.getTime() + pageIndex * duration * 1000);
 
+      // Clamp pageTime to endDate — prevent overflow into next period
+      if (pageTime > endDate) {
+        break;
+      }
+
       visitors.push({
         website_id: websiteId,
         session_id: sessionId,

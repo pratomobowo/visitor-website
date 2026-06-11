@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS daily_stats (
 );
 
 -- Function untuk update daily stats
+-- Fixed: total_sessions now counts DISTINCT sessions, not incrementing per row
 CREATE OR REPLACE FUNCTION update_daily_stats()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -76,9 +77,13 @@ BEGIN
       FROM visitors 
       WHERE website_id = NEW.website_id AND visit_time::date = NEW.visit_time::date
     ),
-    total_sessions = daily_stats.total_sessions + 1,
+    total_sessions = (
+      SELECT COUNT(DISTINCT session_id) 
+      FROM visitors 
+      WHERE website_id = NEW.website_id AND visit_time::date = NEW.visit_time::date
+    ),
     average_duration_seconds = (
-      SELECT AVG(duration_seconds) 
+      SELECT COALESCE(AVG(duration_seconds), 0)
       FROM visitors 
       WHERE website_id = NEW.website_id AND visit_time::date = NEW.visit_time::date
     ),
