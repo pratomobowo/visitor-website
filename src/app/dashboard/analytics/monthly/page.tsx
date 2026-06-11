@@ -7,12 +7,21 @@ import VisitorChart from '@/components/VisitorChart';
 import { BarChart3, Users, Clock, Loader2 } from 'lucide-react';
 
 interface Website { id: string; name: string; domain: string; }
+interface MonthData {
+  month: number;
+  monthName: string;
+  pageViews: number;
+  uniqueVisitors: number;
+  totalSessions: number;
+  averageDuration: number;
+  bounceRate: number;
+}
 
 export default function MonthlyAnalyticsPage() {
   const [websites, setWebsites] = useState<Website[]>([]);
   const [selectedWebsite, setSelectedWebsite] = useState('');
   const [year, setYear] = useState(new Date().getFullYear().toString());
-  const [data, setData] = useState<{ months: Array<{ month: number; pageViews: number; uniqueVisitors: number; avgDuration: number }>} | null>(null);
+  const [data, setData] = useState<{ monthlyData: MonthData[]; summary: { totalPageViews: number; uniqueVisitors: number; averageDuration: number } } | null>(null);
   const [loading, setLoading] = useState(true);
 
   const years = Array.from({ length: 5 }, (_, i) => (new Date().getFullYear() - i).toString());
@@ -30,18 +39,13 @@ export default function MonthlyAnalyticsPage() {
       .then(r => r.json()).then(setData).catch(() => setData(null));
   }, [selectedWebsite, year]);
 
-  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const chartData = data?.months?.map(m => ({
+  const chartData = data?.monthlyData?.filter(m => m.pageViews > 0).map(m => ({
     date: `${year}-${String(m.month).padStart(2, '0')}`,
     pageViews: m.pageViews,
     uniqueVisitors: m.uniqueVisitors,
   })) || [];
 
-  const totals = data?.months?.reduce((acc, m) => ({
-    views: acc.views + m.pageViews,
-    visitors: acc.visitors + m.uniqueVisitors,
-    duration: acc.duration + m.avgDuration,
-  }), { views: 0, visitors: 0, duration: 0 });
+  const formatDuration = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
 
   if (loading) return <div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
 
@@ -64,30 +68,36 @@ export default function MonthlyAnalyticsPage() {
         </div>
       </div>
 
-      {totals && (
+      {data?.summary && (
         <div className="grid gap-4 sm:grid-cols-3">
-          <Card><CardContent className="p-4 flex items-center gap-3"><div className="rounded-lg bg-blue-500/10 p-2"><Users className="h-4 w-4 text-blue-600" /></div><div><p className="text-xs text-muted-foreground">Total Visitors</p><p className="text-xl font-bold">{totals.visitors.toLocaleString()}</p></div></CardContent></Card>
-          <Card><CardContent className="p-4 flex items-center gap-3"><div className="rounded-lg bg-purple-500/10 p-2"><BarChart3 className="h-4 w-4 text-purple-600" /></div><div><p className="text-xs text-muted-foreground">Total Page Views</p><p className="text-xl font-bold">{totals.views.toLocaleString()}</p></div></CardContent></Card>
-          <Card><CardContent className="p-4 flex items-center gap-3"><div className="rounded-lg bg-amber-500/10 p-2"><Clock className="h-4 w-4 text-amber-600" /></div><div><p className="text-xs text-muted-foreground">Avg Duration</p><p className="text-xl font-bold">{Math.floor((totals.duration / (data?.months?.length || 1)) / 60)}:{((totals.duration / (data?.months?.length || 1)) % 60).toFixed(0).padStart(2, '0')}</p></div></CardContent></Card>
+          <Card><CardContent className="p-4 flex items-center gap-3"><div className="rounded-lg bg-blue-500/10 p-2"><Users className="h-4 w-4 text-blue-600" /></div><div><p className="text-xs text-muted-foreground">Total Visitors ({year})</p><p className="text-xl font-bold">{data.summary.uniqueVisitors.toLocaleString()}</p></div></CardContent></Card>
+          <Card><CardContent className="p-4 flex items-center gap-3"><div className="rounded-lg bg-purple-500/10 p-2"><BarChart3 className="h-4 w-4 text-purple-600" /></div><div><p className="text-xs text-muted-foreground">Total Page Views</p><p className="text-xl font-bold">{data.summary.totalPageViews.toLocaleString()}</p></div></CardContent></Card>
+          <Card><CardContent className="p-4 flex items-center gap-3"><div className="rounded-lg bg-amber-500/10 p-2"><Clock className="h-4 w-4 text-amber-600" /></div><div><p className="text-xs text-muted-foreground">Avg Duration</p><p className="text-xl font-bold">{formatDuration(data.summary.averageDuration)}</p></div></CardContent></Card>
         </div>
       )}
 
-      <Card><CardHeader><CardTitle>Monthly Trend — {year}</CardTitle></CardHeader><CardContent>{chartData.length > 0 ? <VisitorChart data={chartData} /> : <p className="text-center text-muted-foreground py-12">No data for {year}</p>}</CardContent></Card>
+      <Card>
+        <CardHeader><CardTitle>Monthly Trend — {year}</CardTitle></CardHeader>
+        <CardContent>
+          {chartData.length > 0 ? <VisitorChart data={chartData} /> : <p className="text-center text-muted-foreground py-12">No data for {year}</p>}
+        </CardContent>
+      </Card>
 
-      {data?.months && data.months.length > 0 && (
+      {data?.monthlyData && data.monthlyData.some(m => m.pageViews > 0) && (
         <Card>
           <CardHeader><CardTitle className="text-base">Monthly Breakdown</CardTitle></CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead><tr className="border-b"><th className="text-left py-2 font-medium">Month</th><th className="text-right py-2 font-medium">Visitors</th><th className="text-right py-2 font-medium">Page Views</th><th className="text-right py-2 font-medium">Avg Duration</th></tr></thead>
+                <thead><tr className="border-b"><th className="text-left py-2 font-medium">Month</th><th className="text-right py-2 font-medium">Visitors</th><th className="text-right py-2 font-medium">Page Views</th><th className="text-right py-2 font-medium">Avg Duration</th><th className="text-right py-2 font-medium">Bounce</th></tr></thead>
                 <tbody>
-                  {data.months.map(m => (
+                  {data.monthlyData.filter(m => m.pageViews > 0).map(m => (
                     <tr key={m.month} className="border-b last:border-0">
-                      <td className="py-2">{monthNames[m.month - 1]}</td>
+                      <td className="py-2">{m.monthName}</td>
                       <td className="text-right py-2 text-muted-foreground">{m.uniqueVisitors.toLocaleString()}</td>
                       <td className="text-right py-2 text-muted-foreground">{m.pageViews.toLocaleString()}</td>
-                      <td className="text-right py-2 text-muted-foreground">{Math.floor(m.avgDuration / 60)}:{(m.avgDuration % 60).toString().padStart(2, '0')}</td>
+                      <td className="text-right py-2 text-muted-foreground">{formatDuration(m.averageDuration)}</td>
+                      <td className="text-right py-2 text-muted-foreground">{m.bounceRate}%</td>
                     </tr>
                   ))}
                 </tbody>

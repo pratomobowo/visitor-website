@@ -7,11 +7,20 @@ import VisitorChart from '@/components/VisitorChart';
 import { BarChart3, Users, TrendingUp, Loader2 } from 'lucide-react';
 
 interface Website { id: string; name: string; domain: string; }
+interface YearData {
+  year: number;
+  pageViews: number;
+  uniqueVisitors: number;
+  totalSessions: number;
+  averageDuration: number;
+  bounceRate: number;
+  growthRate: number;
+}
 
 export default function YearlyAnalyticsPage() {
   const [websites, setWebsites] = useState<Website[]>([]);
   const [selectedWebsite, setSelectedWebsite] = useState('');
-  const [data, setData] = useState<{ years: Array<{ year: number; pageViews: number; uniqueVisitors: number; avgDuration: number }> } | null>(null);
+  const [data, setData] = useState<{ yearlyData: YearData[]; summary: { totalPageViews: number; uniqueVisitors: number; averageDuration: number } } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -27,14 +36,19 @@ export default function YearlyAnalyticsPage() {
       .then(r => r.json()).then(setData).catch(() => setData(null));
   }, [selectedWebsite]);
 
-  const chartData = data?.years?.map(y => ({
-    date: y.year.toString(),
-    pageViews: y.pageViews,
-    uniqueVisitors: y.uniqueVisitors,
-  })) || [];
+  // Sort ascending for chart
+  const chartData = data?.yearlyData
+    ?.filter(y => y.pageViews > 0)
+    ?.sort((a, b) => a.year - b.year)
+    ?.map(y => ({
+      date: y.year.toString(),
+      pageViews: y.pageViews,
+      uniqueVisitors: y.uniqueVisitors,
+    })) || [];
 
-  const totalVisitors = data?.years?.reduce((sum, y) => sum + y.uniqueVisitors, 0) || 0;
-  const totalViews = data?.years?.reduce((sum, y) => sum + y.pageViews, 0) || 0;
+  const totalVisitors = data?.summary?.uniqueVisitors || 0;
+  const totalViews = data?.summary?.totalPageViews || 0;
+  const formatDuration = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
 
   if (loading) return <div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
 
@@ -54,25 +68,33 @@ export default function YearlyAnalyticsPage() {
       <div className="grid gap-4 sm:grid-cols-3">
         <Card><CardContent className="p-4 flex items-center gap-3"><div className="rounded-lg bg-blue-500/10 p-2"><Users className="h-4 w-4 text-blue-600" /></div><div><p className="text-xs text-muted-foreground">All-time Visitors</p><p className="text-xl font-bold">{totalVisitors.toLocaleString()}</p></div></CardContent></Card>
         <Card><CardContent className="p-4 flex items-center gap-3"><div className="rounded-lg bg-purple-500/10 p-2"><BarChart3 className="h-4 w-4 text-purple-600" /></div><div><p className="text-xs text-muted-foreground">All-time Views</p><p className="text-xl font-bold">{totalViews.toLocaleString()}</p></div></CardContent></Card>
-        <Card><CardContent className="p-4 flex items-center gap-3"><div className="rounded-lg bg-green-500/10 p-2"><TrendingUp className="h-4 w-4 text-green-600" /></div><div><p className="text-xs text-muted-foreground">Years Tracked</p><p className="text-xl font-bold">{data?.years?.length || 0}</p></div></CardContent></Card>
+        <Card><CardContent className="p-4 flex items-center gap-3"><div className="rounded-lg bg-green-500/10 p-2"><TrendingUp className="h-4 w-4 text-green-600" /></div><div><p className="text-xs text-muted-foreground">Years Tracked</p><p className="text-xl font-bold">{data?.yearlyData?.filter(y => y.pageViews > 0).length || 0}</p></div></CardContent></Card>
       </div>
 
-      <Card><CardHeader><CardTitle>Yearly Overview</CardTitle></CardHeader><CardContent>{chartData.length > 0 ? <VisitorChart data={chartData} /> : <p className="text-center text-muted-foreground py-12">No data available</p>}</CardContent></Card>
+      <Card>
+        <CardHeader><CardTitle>Yearly Overview</CardTitle></CardHeader>
+        <CardContent>
+          {chartData.length > 0 ? <VisitorChart data={chartData} /> : <p className="text-center text-muted-foreground py-12">No data available</p>}
+        </CardContent>
+      </Card>
 
-      {data?.years && data.years.length > 0 && (
+      {data?.yearlyData && data.yearlyData.some(y => y.pageViews > 0) && (
         <Card>
           <CardHeader><CardTitle className="text-base">Year-by-Year Breakdown</CardTitle></CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead><tr className="border-b"><th className="text-left py-2 font-medium">Year</th><th className="text-right py-2 font-medium">Visitors</th><th className="text-right py-2 font-medium">Page Views</th><th className="text-right py-2 font-medium">Avg Duration</th></tr></thead>
+                <thead><tr className="border-b"><th className="text-left py-2 font-medium">Year</th><th className="text-right py-2 font-medium">Visitors</th><th className="text-right py-2 font-medium">Page Views</th><th className="text-right py-2 font-medium">Avg Duration</th><th className="text-right py-2 font-medium">Growth</th></tr></thead>
                 <tbody>
-                  {data.years.map(y => (
+                  {data.yearlyData.filter(y => y.pageViews > 0).map(y => (
                     <tr key={y.year} className="border-b last:border-0">
                       <td className="py-2 font-medium">{y.year}</td>
                       <td className="text-right py-2 text-muted-foreground">{y.uniqueVisitors.toLocaleString()}</td>
                       <td className="text-right py-2 text-muted-foreground">{y.pageViews.toLocaleString()}</td>
-                      <td className="text-right py-2 text-muted-foreground">{Math.floor(y.avgDuration / 60)}:{(y.avgDuration % 60).toString().padStart(2, '0')}</td>
+                      <td className="text-right py-2 text-muted-foreground">{formatDuration(y.averageDuration)}</td>
+                      <td className={`text-right py-2 font-medium ${y.growthRate > 0 ? 'text-green-600' : y.growthRate < 0 ? 'text-red-600' : 'text-muted-foreground'}`}>
+                        {y.growthRate > 0 ? '+' : ''}{y.growthRate}%
+                      </td>
                     </tr>
                   ))}
                 </tbody>
