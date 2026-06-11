@@ -14,23 +14,25 @@ export async function GET(request: NextRequest) {
     const websiteId = searchParams.get('websiteId');
     
     if (!websiteId) {
-      // Get total realtime visitors across all websites
+      // Get total realtime visitors across all websites (exclude fake data)
       const realTimeVisitors = await query(`
         SELECT COUNT(DISTINCT session_id) as count
         FROM visitors
         WHERE visit_time >= NOW() - INTERVAL '30 minutes'
+        AND is_fake = false
       `);
       
       const count = (realTimeVisitors[0] as { count: string })?.count || 0;
       return NextResponse.json({ count });
     }
     
-    // Get realtime visitors for specific website
+    // Get realtime visitors for specific website (exclude fake data)
     const realTimeVisitors = await query(`
       SELECT COUNT(DISTINCT session_id) as count
       FROM visitors
       WHERE website_id = $1
       AND visit_time >= NOW() - INTERVAL '30 minutes'
+      AND is_fake = false
     `, [websiteId]);
     
     const count = (realTimeVisitors[0] as { count: string })?.count || 0;
